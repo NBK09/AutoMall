@@ -34,5 +34,6 @@ public record AdResponse(
         LocalDateTime createdAt,
 
         Long userId, // чтобы фронт мог понять "моё/не моё"
-        List<String> photoUrls
+        List<String> photoUrls,
+        boolean isFavorite
 ) { }

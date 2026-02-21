@@ -29,6 +29,7 @@ public record AdDetailsResponse(
         String city,
 
         List<String> photoUrls,
+        boolean isFavorite,
         SellerResponse seller
 ) {
     public record SellerResponse(

@@ -33,7 +33,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/ads/my", "/api/ads/*/edit", "/api/ads/*/archive", "/api/ads/*/restore").authenticated()
+                        .requestMatchers("/api/ads/my", "/api/ads/*/edit", "/api/ads/*/archive", "/api/ads/*/restore", "/api/favorites/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/ads/*").authenticated()
                         .requestMatchers(
                                 "/", "/index.html", "/assets/**", "/favicon.ico",

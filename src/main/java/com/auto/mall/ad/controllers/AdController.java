@@ -28,8 +28,35 @@ public class AdController {
     }
 
     @GetMapping
-    public List<AdResponse> getAllActive() {
-        return adService.getAllActiveAds();
+    public List<AdResponse> getAllActive(
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getAllActiveAds(user != null ? user.getUserId() : null);
+    }
+
+    @GetMapping("/{id}")
+    public AdDetailsResponse getDetails(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getDetails(id, user != null ? user.getUserId() : null);
+    }
+
+    @GetMapping("/{id}/edit")
+    public AdEditResponse getForEdit(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getForEdit(id, user.getUserId());
+    }
+
+    @PutMapping("/{id}")
+    public AdDetailsResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAdRequest request,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.updateAd(id, user.getUserId(), request);
     }
 
     @GetMapping("/{id}")

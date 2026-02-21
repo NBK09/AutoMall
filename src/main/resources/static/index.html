@@ -272,7 +272,17 @@
         <div id="myAdsList" class="list"></div>
     </section>
 
-
+    <!-- FAVORITES -->
+    <section id="screenFav" style="display:none">
+        <div class="card">
+            <div class="title">Избранное</div>
+            <div class="sub">Объявления, которые вы сохранили.</div>
+            <div class="btns">
+                <button class="btn btn-ghost" onclick="loadFavorites()">Обновить</button>
+            </div>
+        </div>
+        <div id="favAdsList" class="list"></div>
+    </section>
 
     <!-- AD DETAILS -->
     <section id="screenAd" style="display:none">
@@ -328,6 +338,18 @@
     </section>
 </div>
 
+<div id="photoOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;">
+  <div style="position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:2;">
+    <button class="btn btn-ghost" onclick="closePhotoOverlay()">✕</button>
+    <div id="photoOverlayCounter" class="pill">1/1</div>
+  </div>
+  <button class="btn btn-ghost" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="overlayPrev()">‹</button>
+  <button class="btn btn-ghost" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="overlayNext()">›</button>
+  <div id="photoOverlayStage" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;">
+    <img id="photoOverlayImg" src="" style="max-width:100%;max-height:100%;transform:translate(0px,0px) scale(1);transform-origin:center center;user-select:none;"/>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <!-- Bottom nav -->
@@ -336,6 +358,7 @@
         <div id="navMain" class="tab active" onclick="switchScreen('main')">🏠 Главная</div>
         <div id="navCreate" class="tab" onclick="switchScreen('create')">➕ Подать</div>
         <div id="navMy" class="tab" onclick="switchScreen('my')">👤 Мои</div>
+        <div id="navFav" class="tab" onclick="switchScreen('fav')">⭐ Избранное</div>
     </div>
 </div>
 
@@ -352,6 +375,9 @@
     let editMainIndex = 0;
     let selectedAdId = null;
     let previousScreen = "main";
+    let favoriteIds = new Set();
+    let adGallery = [];
+    let adActiveIndex = 0;
     const MAX_AD_PHOTOS = 10;
     const COMPRESS_MAX_SIDE = 1600;
     const COMPRESS_QUALITY = 0.78;
@@ -486,6 +512,7 @@
       }
 
       const data = await res.json();
+      favoriteIds = new Set((data || []).filter(x => x.isFavorite).map(x => x.id));
       return Array.isArray(data.photoUrls) ? data.photoUrls : [];
     }
 
@@ -623,7 +650,7 @@
         <div class="ad" onclick="openAdDetails(${ad.id})">
           <div class="thumb">${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}</div>
           <div>
-            <h4>${escapeHtml(title)}</h4>
+            <h4>${escapeHtml(title)} <button class="btn btn-ghost" style="padding:6px 10px" onclick="event.stopPropagation();toggleFavorite(${ad.id}, ${ad.isFavorite ? "true" : "false"})">${ad.isFavorite ? "♥" : "♡"}</button></h4>
             <div class="meta">
               <div><b>${escapeHtml(price)}</b> ${mileage ? " · " + escapeHtml(mileage) : ""}</div>
               <div>${escapeHtml(meta1)}</div>
@@ -807,7 +834,9 @@
 
     async function openAdDetails(id){
       selectedAdId = id;
-      previousScreen = document.getElementById("screenMy").style.display === "block" ? "my" : "main";
+      if (document.getElementById("screenMy").style.display === "block") previousScreen = "my";
+      else if (document.getElementById("screenFav").style.display === "block") previousScreen = "fav";
+      else previousScreen = "main";
       switchScreen("ad");
       await loadAdDetails(id);
     }
@@ -821,11 +850,14 @@
         return;
       }
       const ad = await res.json();
-      const photos = Array.isArray(ad.photoUrls) ? ad.photoUrls : [];
+      adGallery = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
+      if (adActiveIndex >= adGallery.length) adActiveIndex = 0;
       const tgLink = telegramLink(ad.seller);
       block.innerHTML = `
-        <h3 style="margin:0 0 10px">${escapeHtml(ad.brand)} ${escapeHtml(ad.model)} ${escapeHtml(ad.year || "")}</h3>
-        <div class="gallery-grid">${photos.map(u => `<div class="gallery-item"><img src="${escapeHtml(u)}" alt="photo"/></div>`).join("")}</div>
+        <h3 style="margin:0 0 10px">${escapeHtml(ad.brand)} ${escapeHtml(ad.model)} ${escapeHtml(ad.year || "")}
+          <button class="btn btn-ghost" style="padding:6px 10px" onclick="toggleFavorite(${ad.id}, ${ad.isFavorite ? "true" : "false"})">${ad.isFavorite ? "♥" : "♡"}</button>
+        </h3>
+        ${buildCarousel(adGallery)}
         <div class="meta" style="margin-top:10px">
           <div><b>${escapeHtml(ad.price || "")} ${escapeHtml(ad.currency || "")}</b></div>
           <div>${escapeHtml(ad.generation || "")} · ${escapeHtml(ad.engine || "")}</div>
@@ -848,6 +880,126 @@
       }
       window.open(link, '_blank');
     }
+
+    async function loadFavorites(){
+      const list = document.getElementById("favAdsList");
+      if (!token){
+        list.innerHTML = `<div class="card"><div class="sub">Нужна авторизация через Telegram.</div></div>`;
+        return;
+      }
+      list.innerHTML = `<div class="card"><div class="sub">Загрузка…</div></div>`;
+      const res = await api("/api/favorites");
+      if (!res.ok){
+        list.innerHTML = `<div class="card"><div class="sub">Ошибка: ${res.status}</div></div>`;
+        return;
+      }
+      const data = await res.json();
+      favoriteIds = new Set((data || []).filter(x => x.isFavorite).map(x => x.id));
+      if (!data?.length){
+        list.innerHTML = `<div class="card"><div class="sub">Пусто.</div></div>`;
+        return;
+      }
+      list.innerHTML = data.map(a => adCard(a, "MY_ACTIVE")).join("");
+    }
+
+    async function toggleFavorite(adId, current){
+      if (!token) return toast("Нужна авторизация", false);
+      const shouldAdd = !current;
+      const method = shouldAdd ? "POST" : "DELETE";
+      const res = await api(`/api/favorites/${adId}`, { method });
+      if (!res.ok){
+        toast("Не удалось обновить избранное", false);
+        return;
+      }
+      if (shouldAdd) favoriteIds.add(adId); else favoriteIds.delete(adId);
+      await loadAllAds();
+      if (document.getElementById("screenMy").style.display === "block") await loadMyAds();
+      if (document.getElementById("screenFav").style.display === "block") await loadFavorites();
+      if (selectedAdId === adId) await loadAdDetails(adId);
+    }
+
+    function buildCarousel(photos){
+      if (!photos.length) return '<div class="thumb" style="width:100%;height:220px">Нет фото</div>';
+      const main = photos[adActiveIndex] || photos[0];
+      return `
+        <div style="position:relative">
+          <img src="${escapeHtml(main)}" alt="main" onclick="openPhotoOverlay(${adActiveIndex})" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid var(--stroke);cursor:zoom-in"/>
+          <button class="btn btn-ghost" style="position:absolute;left:8px;top:50%;transform:translateY(-50%)" onclick="event.stopPropagation();adPrev()">‹</button>
+          <button class="btn btn-ghost" style="position:absolute;right:8px;top:50%;transform:translateY(-50%)" onclick="event.stopPropagation();adNext()">›</button>
+        </div>
+        <div style="display:flex;gap:8px;overflow:auto;scroll-snap-type:x mandatory;margin-top:8px;padding-bottom:4px">
+          ${photos.map((u,i)=>`<img loading="lazy" onclick="selectAdPhoto(${i})" src="${escapeHtml(u)}" style="width:72px;height:56px;object-fit:cover;border-radius:10px;border:${i===adActiveIndex?'2px solid #60a5fa':'1px solid var(--stroke)'};scroll-snap-align:start;cursor:pointer"/>`).join('')}
+        </div>
+      `;
+    }
+
+    function selectAdPhoto(i){ adActiveIndex = i; if (selectedAdId) loadAdDetails(selectedAdId); }
+    function adPrev(){ if(!adGallery.length) return; adActiveIndex = (adActiveIndex - 1 + adGallery.length) % adGallery.length; if (selectedAdId) loadAdDetails(selectedAdId); }
+    function adNext(){ if(!adGallery.length) return; adActiveIndex = (adActiveIndex + 1) % adGallery.length; if (selectedAdId) loadAdDetails(selectedAdId); }
+
+    const overlayState = {scale:1,x:0,y:0,drag:false,startX:0,startY:0,pinchDistance:0};
+
+    function applyOverlayTransform(){
+      const img = document.getElementById("photoOverlayImg");
+      img.style.transform = `translate(${overlayState.x}px, ${overlayState.y}px) scale(${overlayState.scale})`;
+      document.getElementById("photoOverlayCounter").textContent = `${adActiveIndex+1}/${Math.max(1, adGallery.length)}`;
+    }
+
+    function resetOverlayZoom(){ overlayState.scale = 1; overlayState.x = 0; overlayState.y = 0; applyOverlayTransform(); }
+
+    function openPhotoOverlay(index){
+      if (!adGallery.length) return;
+      adActiveIndex = index;
+      document.getElementById("photoOverlay").style.display = "block";
+      document.body.style.overflow = "hidden";
+      document.getElementById("photoOverlayImg").src = adGallery[adActiveIndex];
+      resetOverlayZoom();
+    }
+
+    function closePhotoOverlay(){
+      document.getElementById("photoOverlay").style.display = "none";
+      document.body.style.overflow = "";
+    }
+    function overlayPrev(){ if(!adGallery.length) return; adActiveIndex=(adActiveIndex-1+adGallery.length)%adGallery.length; document.getElementById("photoOverlayImg").src=adGallery[adActiveIndex]; resetOverlayZoom(); }
+    function overlayNext(){ if(!adGallery.length) return; adActiveIndex=(adActiveIndex+1)%adGallery.length; document.getElementById("photoOverlayImg").src=adGallery[adActiveIndex]; resetOverlayZoom(); }
+
+    function distance(t1,t2){ const dx=t1.clientX-t2.clientX; const dy=t1.clientY-t2.clientY; return Math.hypot(dx,dy); }
+
+    (function bindOverlayGestures(){
+      const stage = document.getElementById("photoOverlayStage");
+      stage.addEventListener("wheel", e => { e.preventDefault(); overlayState.scale = Math.min(4, Math.max(1, overlayState.scale + (e.deltaY < 0 ? 0.15 : -0.15))); applyOverlayTransform(); }, {passive:false});
+      stage.addEventListener("dblclick", e => { e.preventDefault(); overlayState.scale = overlayState.scale > 1 ? 1 : 2; if (overlayState.scale===1){overlayState.x=0;overlayState.y=0;} applyOverlayTransform(); });
+      stage.addEventListener("mousedown", e => { if (overlayState.scale <= 1) return; overlayState.drag = true; overlayState.startX = e.clientX - overlayState.x; overlayState.startY = e.clientY - overlayState.y; });
+      window.addEventListener("mousemove", e => { if (!overlayState.drag) return; overlayState.x = e.clientX - overlayState.startX; overlayState.y = e.clientY - overlayState.startY; applyOverlayTransform(); });
+      window.addEventListener("mouseup", ()=> overlayState.drag = false);
+      stage.addEventListener("touchstart", e => {
+        if (e.touches.length === 2) overlayState.pinchDistance = distance(e.touches[0], e.touches[1]);
+        if (e.touches.length === 1 && overlayState.scale > 1) {
+          overlayState.drag = true;
+          overlayState.startX = e.touches[0].clientX - overlayState.x;
+          overlayState.startY = e.touches[0].clientY - overlayState.y;
+        }
+      }, {passive:false});
+      stage.addEventListener("touchmove", e => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const dist = distance(e.touches[0], e.touches[1]);
+          if (overlayState.pinchDistance > 0) {
+            overlayState.scale = Math.min(4, Math.max(1, overlayState.scale * (dist / overlayState.pinchDistance)));
+            overlayState.pinchDistance = dist;
+            applyOverlayTransform();
+          }
+          return;
+        }
+        if (overlayState.drag && e.touches.length === 1) {
+          e.preventDefault();
+          overlayState.x = e.touches[0].clientX - overlayState.startX;
+          overlayState.y = e.touches[0].clientY - overlayState.startY;
+          applyOverlayTransform();
+        }
+      }, {passive:false});
+      stage.addEventListener("touchend", () => { overlayState.drag = false; overlayState.pinchDistance = 0; });
+    })();
 
     async function loadEditReference(){
       const b = await api("/api/reference/brands");
@@ -1032,17 +1184,19 @@
 
     // ====== UI NAV ======
     function switchScreen(name){
-      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy", ad:"screenAd", edit:"screenEdit" };
+      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy", fav:"screenFav", ad:"screenAd", edit:"screenEdit" };
       Object.values(screens).forEach(id => document.getElementById(id).style.display = "none");
       document.getElementById(screens[name]).style.display = "block";
 
-      ["navMain","navCreate","navMy"].forEach(id => document.getElementById(id).classList.remove("active"));
+      ["navMain","navCreate","navMy","navFav"].forEach(id => document.getElementById(id).classList.remove("active"));
       if (name==="main") document.getElementById("navMain").classList.add("active");
       if (name==="create") document.getElementById("navCreate").classList.add("active");
       if (name==="my") document.getElementById("navMy").classList.add("active");
+      if (name==="fav") document.getElementById("navFav").classList.add("active");
 
       if (name==="main") loadAllAds();
       if (name==="my") loadMyAds();
+      if (name==="fav") loadFavorites();
       if (name==="create") loadReference();
     }
 
@@ -1096,6 +1250,8 @@
         e.target.value = "";
       }
     });
+
+    window.addEventListener("keydown", e => { if (e.key === "Escape") closePhotoOverlay(); });
 
     // ====== BOOT ======
     (async function init(){

@@ -9,6 +9,7 @@ import com.auto.mall.ad.dto.UpdateAdRequest;
 import com.auto.mall.ad.entity.Ad;
 import com.auto.mall.ad.entity.AdPhoto;
 import com.auto.mall.ad.repository.AdRepository;
+import com.auto.mall.ad.repository.FavoriteRepository;
 import com.auto.mall.geo.entity.City;
 import com.auto.mall.geo.repository.CityRepository;
 import com.auto.mall.user.entity.User;
@@ -49,6 +50,7 @@ public class AdService {
     private final TransmissionRepository transmissionRepository;
     private final DriveTypeRepository driveTypeRepository;
     private final CityRepository cityRepository;
+    private final FavoriteRepository favoriteRepository;
 
     private static final int MAX_PHOTOS_PER_AD = 10;
 
@@ -95,14 +97,14 @@ public class AdService {
                 .build();
 
         syncPhotos(ad, request.photoUrls(), null);
-        return mapSummary(adRepository.save(ad));
+        return mapSummary(adRepository.save(ad), userId);
     }
 
     @Transactional(readOnly = true)
-    public AdDetailsResponse getDetails(Long adId) {
+    public AdDetailsResponse getDetails(Long adId, Long currentUserId) {
         Ad ad = adRepository.findById(adId)
                 .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
-        return mapDetails(ad);
+        return mapDetails(ad, currentUserId);
     }
 
     @Transactional(readOnly = true)
@@ -159,6 +161,10 @@ public class AdService {
         if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(ad.getGeneration().getId())) {
             throw new IllegalArgumentException("Engine does not belong to ad generation");
         }
+        if (generationId != null && !Objects.equals(generationId, ad.getGeneration().getId())) {
+            throw new IllegalArgumentException("generationId cannot be changed");
+        }
+    }
 
         Transmission transmission = transmissionRepository.findById(request.transmissionId())
                 .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
@@ -183,20 +189,27 @@ public class AdService {
         if (request.photoUrls() != null) {
             syncPhotos(ad, request.photoUrls(), request.mainIndex());
         }
+        if (!generation.getModel().getId().equals(model.getId())) {
+            throw new IllegalArgumentException("Generation does not belong to model");
+        }
+        if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(generation.getId())) {
+            throw new IllegalArgumentException("Engine does not belong to generation");
+        }
+    }
 
-        return mapDetails(adRepository.save(ad));
+        return mapDetails(adRepository.save(ad), userId);
     }
 
     @Transactional(readOnly = true)
-    public List<AdResponse> getAllActiveAds() {
+    public List<AdResponse> getAllActiveAds(Long currentUserId) {
         return adRepository.findByStatusOrderByCreatedAtDesc(AdStatus.ACTIVE)
-                .stream().map(this::mapSummary).toList();
+                .stream().map(ad -> mapSummary(ad, currentUserId)).toList();
     }
 
     @Transactional(readOnly = true)
     public List<AdResponse> getMyByStatus(Long userId, AdStatus status) {
         return adRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status)
-                .stream().map(this::mapSummary).toList();
+                .stream().map(ad -> mapSummary(ad, userId)).toList();
     }
 
     public void archive(Long adId, Long userId) {
@@ -262,9 +275,7 @@ public class AdService {
             throw new IllegalArgumentException("photoUrls contains null values");
         }
 
-        List<String> sanitized = new ArrayList<>(new LinkedHashSet<>(photoUrls.stream()
-                .map(String::trim)
-                .toList()));
+        List<String> sanitized = new ArrayList<>(new LinkedHashSet<>(photoUrls.stream().map(String::trim).toList()));
 
         if (sanitized.stream().anyMatch(String::isBlank)) {
             throw new IllegalArgumentException("photoUrls contains blank values");
@@ -330,8 +341,9 @@ public class AdService {
                 .toList();
     }
 
-    private AdResponse mapSummary(Ad ad) {
+    public AdResponse mapSummary(Ad ad, Long currentUserId) {
         List<String> photoUrls = getOrderedPhotos(ad).stream().map(AdPhoto::getPublicUrl).toList();
+        boolean isFavorite = currentUserId != null && favoriteRepository.existsByUserIdAndAdId(currentUserId, ad.getId());
         return new AdResponse(
                 ad.getId(),
                 ad.getBrand().getName(),
@@ -351,13 +363,15 @@ public class AdService {
                 ad.getStatus(),
                 ad.getCreatedAt(),
                 ad.getUser().getId(),
-                photoUrls
+                photoUrls,
+                isFavorite
         );
     }
 
-    private AdDetailsResponse mapDetails(Ad ad) {
+    private AdDetailsResponse mapDetails(Ad ad, Long currentUserId) {
         List<String> photoUrls = getOrderedPhotos(ad).stream().map(AdPhoto::getPublicUrl).toList();
         User seller = ad.getUser();
+        boolean isFavorite = currentUserId != null && favoriteRepository.existsByUserIdAndAdId(currentUserId, ad.getId());
         return new AdDetailsResponse(
                 ad.getId(),
                 ad.getStatus(),
@@ -378,6 +392,7 @@ public class AdService {
                 ad.getDescription(),
                 ad.getCity().getName(),
                 photoUrls,
+                isFavorite,
                 new AdDetailsResponse.SellerResponse(seller.getId(), seller.getUsername(), seller.getTelegramId())
         );
     }
