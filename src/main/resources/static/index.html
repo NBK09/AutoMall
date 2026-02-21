@@ -110,8 +110,9 @@
           width:110px;height:86px;border-radius:14px;border:1px solid var(--stroke);
           background:linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
           display:flex;align-items:center;justify-content:center;color:var(--muted);
-          font-weight:900;
+          font-weight:900;overflow:hidden;
         }
+        .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
         .ad h4{margin:0;font-size:16px}
         .meta{margin-top:4px;color:var(--muted);font-size:13px;line-height:1.3}
         .meta b{color:rgba(255,255,255,.85)}
@@ -226,6 +227,13 @@
                 <textarea id="description" placeholder="Опиши авто (минимум 10 символов)"></textarea>
             </div>
 
+
+            <div style="margin-top:10px">
+                <label>Фото (URL, по одному на строку)</label>
+                <textarea id="photoUrls" placeholder="https://cdn.example.com/ad/1.jpg&#10;https://cdn.example.com/ad/2.jpg"></textarea>
+                <div class="hint">Первое фото станет главным. Поддерживаются http/https ссылки.</div>
+            </div>
+
             <div class="btns">
                 <button class="btn" onclick="createAd()">Опубликовать</button>
                 <button class="btn btn-ghost" onclick="clearForm()">Очистить</button>
@@ -311,6 +319,14 @@
     }
 
     function num(v){ return v === "" || v === null || v === undefined ? null : Number(v); }
+
+    function parsePhotoUrls(text){
+      return String(text || "")
+        .split(/\n|,/)
+        .map(v => v.trim())
+        .filter(v => v && /^https?:\/\//i.test(v));
+    }
+
 
     // ====== TELEGRAM AUTH ======
     async function telegramAutoAuth(){
@@ -419,6 +435,8 @@
     function adCard(ad, mode){
       // mode: "ALL" | "MY_ACTIVE" | "MY_ARCHIVED"
       const title = `${ad.brand ?? "?"} ${ad.model ?? "?"} ${ad.year ?? ""}`.trim();
+      const photos = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
+      const thumbUrl = photos.length ? photos[0] : null;
       const meta1 = `${ad.generation ?? ""} · ${ad.engine ?? ""} · ${ad.transmission ?? ""} · ${ad.driveType ?? ""}`.replace(/\s·\s·/g," · ").trim();
       const meta2 = `${ad.city ?? ""}`.trim();
       const price = ad.price != null ? `${ad.price} ${ad.currency ?? ""}` : "";
@@ -435,7 +453,7 @@
 
       return `
         <div class="ad">
-          <div class="thumb">AUTO</div>
+          <div class="thumb">${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}</div>
           <div>
             <h4>${escapeHtml(title)}</h4>
             <div class="meta">
@@ -539,7 +557,8 @@
         vin: (document.getElementById("vin").value || "").trim() || null,
         price: num(document.getElementById("price").value),
         currency: "KZT",
-        description: (document.getElementById("description").value || "").trim()
+        description: (document.getElementById("description").value || "").trim(),
+        photoUrls: parsePhotoUrls(document.getElementById("photoUrls").value)
       };
 
       const missing = validateCreatePayload(payload);
@@ -575,7 +594,7 @@
     }
 
     function clearForm(){
-      ["year","mileage","color","vin","price","description"].forEach(id => document.getElementById(id).value = "");
+      ["year","mileage","color","vin","price","description","photoUrls"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("createDebug").textContent = "";
       // оставим выбранную марку, но сбросим каскад
       setOptions("model", [], "— пусто —");
