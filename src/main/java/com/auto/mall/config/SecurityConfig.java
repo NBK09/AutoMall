@@ -5,6 +5,7 @@ import com.auto.mall.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -32,14 +33,16 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/ads/my", "/api/ads/*/edit", "/api/ads/*/archive", "/api/ads/*/restore").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/ads/*").authenticated()
                         .requestMatchers(
                                 "/", "/index.html", "/assets/**", "/favicon.ico",
                                 "/api/auth/**",
                                 "/api/reference/**",
-                                "/api/ads",
                                 "/api/ad-photos/upload",
                                 "/uploads/**"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/ads", "/api/ads/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(

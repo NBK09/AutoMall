@@ -6,9 +6,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record UpdateAdRequest(
-        @NotNull Long brandId,
-        @NotNull Long modelId,
-        @NotNull Long generationId,
+        Long brandId,
+        Long modelId,
+        Long generationId,
 
         @NotNull Long engineId,
         @NotNull Long transmissionId,

@@ -1,6 +1,7 @@
 package com.auto.mall.ad.service;
 
 import com.auto.mall.ad.Enum.AdStatus;
+import com.auto.mall.ad.dto.AdDetailsResponse;
 import com.auto.mall.ad.dto.AdEditResponse;
 import com.auto.mall.ad.dto.AdResponse;
 import com.auto.mall.ad.dto.CreateAdRequest;
@@ -47,34 +48,27 @@ public class AdService {
     private final EngineRepository engineRepository;
     private final TransmissionRepository transmissionRepository;
     private final DriveTypeRepository driveTypeRepository;
+    private final CityRepository cityRepository;
 
     private static final int MAX_PHOTOS_PER_AD = 10;
 
-    private final CityRepository cityRepository;
-
     public AdResponse createAd(CreateAdRequest request, Long userId) {
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
         Brand brand = brandRepository.findById(request.brandId())
                 .orElseThrow(() -> new EntityNotFoundException("Brand not found"));
-
         Model model = modelRepository.findById(request.modelId())
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
-
         Generation generation = generationRepository.findById(request.generationId())
                 .orElseThrow(() -> new EntityNotFoundException("Generation not found"));
-
         Engine engine = engineRepository.findById(request.engineId())
                 .orElseThrow(() -> new EntityNotFoundException("Engine not found"));
 
         Transmission transmission = transmissionRepository.findById(request.transmissionId())
                 .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
-
         DriveType driveType = driveTypeRepository.findById(request.driveTypeId())
                 .orElseThrow(() -> new EntityNotFoundException("Drive type not found"));
-
         City city = cityRepository.findById(request.cityId())
                 .orElseThrow(() -> new EntityNotFoundException("City not found"));
 
@@ -101,25 +95,28 @@ public class AdService {
                 .build();
 
         syncPhotos(ad, request.photoUrls(), null);
+        return mapSummary(adRepository.save(ad));
+    }
 
-        return map(adRepository.save(ad));
+    @Transactional(readOnly = true)
+    public AdDetailsResponse getDetails(Long adId) {
+        Ad ad = adRepository.findById(adId)
+                .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
+        return mapDetails(ad);
     }
 
     @Transactional(readOnly = true)
     public AdEditResponse getForEdit(Long adId, Long userId) {
         Ad ad = adRepository.findById(adId)
                 .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
-
         ensureOwner(ad, userId);
 
-        List<String> photoUrls = ad.getPhotos().stream()
-                .map(AdPhoto::getPublicUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .toList();
+        List<AdPhoto> orderedPhotos = getOrderedPhotos(ad);
+        List<String> photoUrls = orderedPhotos.stream().map(AdPhoto::getPublicUrl).toList();
 
-        int mainIndex = 0;
-        for (int i = 0; i < ad.getPhotos().size(); i++) {
-            if (Boolean.TRUE.equals(ad.getPhotos().get(i).getIsMain())) {
+        int mainIndex = orderedPhotos.isEmpty() ? -1 : 0;
+        for (int i = 0; i < orderedPhotos.size(); i++) {
+            if (Boolean.TRUE.equals(orderedPhotos.get(i).getIsMain())) {
                 mainIndex = i;
                 break;
             }
@@ -142,28 +139,27 @@ public class AdService {
                 ad.getCurrency(),
                 ad.getDescription(),
                 photoUrls,
-                photoUrls.isEmpty() ? null : Math.min(mainIndex, photoUrls.size() - 1)
+                mainIndex < 0 ? null : mainIndex
         );
     }
 
-    public AdResponse updateAd(Long adId, Long userId, UpdateAdRequest request) {
+    public AdDetailsResponse updateAd(Long adId, Long userId, UpdateAdRequest request) {
         Ad ad = adRepository.findById(adId)
                 .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
-
         ensureOwner(ad, userId);
 
         if (ad.getStatus() != AdStatus.ACTIVE) {
             throw new IllegalArgumentException("Archived ads cannot be edited. Restore first.");
         }
 
-        Brand brand = brandRepository.findById(request.brandId())
-                .orElseThrow(() -> new EntityNotFoundException("Brand not found"));
-        Model model = modelRepository.findById(request.modelId())
-                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
-        Generation generation = generationRepository.findById(request.generationId())
-                .orElseThrow(() -> new EntityNotFoundException("Generation not found"));
+        validateImmutableIds(ad, request.brandId(), request.modelId(), request.generationId());
+
         Engine engine = engineRepository.findById(request.engineId())
                 .orElseThrow(() -> new EntityNotFoundException("Engine not found"));
+        if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(ad.getGeneration().getId())) {
+            throw new IllegalArgumentException("Engine does not belong to ad generation");
+        }
+
         Transmission transmission = transmissionRepository.findById(request.transmissionId())
                 .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
         DriveType driveType = driveTypeRepository.findById(request.driveTypeId())
@@ -171,11 +167,6 @@ public class AdService {
         City city = cityRepository.findById(request.cityId())
                 .orElseThrow(() -> new EntityNotFoundException("City not found"));
 
-        validateRelations(brand, model, generation, engine);
-
-        ad.setBrand(brand);
-        ad.setModel(model);
-        ad.setGeneration(generation);
         ad.setEngine(engine);
         ad.setTransmission(transmission);
         ad.setDriveType(driveType);
@@ -193,52 +184,49 @@ public class AdService {
             syncPhotos(ad, request.photoUrls(), request.mainIndex());
         }
 
-        return map(adRepository.save(ad));
+        return mapDetails(adRepository.save(ad));
     }
 
     @Transactional(readOnly = true)
     public List<AdResponse> getAllActiveAds() {
         return adRepository.findByStatusOrderByCreatedAtDesc(AdStatus.ACTIVE)
-                .stream().map(this::map).toList();
+                .stream().map(this::mapSummary).toList();
     }
 
     @Transactional(readOnly = true)
     public List<AdResponse> getMyByStatus(Long userId, AdStatus status) {
-        return adRepository
-                .findByUserIdAndStatusOrderByCreatedAtDesc(userId, status)
-                .stream()
-                .map(this::map)
-                .toList();
+        return adRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status)
+                .stream().map(this::mapSummary).toList();
     }
 
     public void archive(Long adId, Long userId) {
-        Ad ad = adRepository.findById(adId)
-                .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
-
+        Ad ad = adRepository.findById(adId).orElseThrow(() -> new EntityNotFoundException("Ad not found"));
         ensureOwner(ad, userId);
-
-        if (ad.getStatus() == AdStatus.ARCHIVED) {
-            return;
-        }
-
+        if (ad.getStatus() == AdStatus.ARCHIVED) return;
         ad.setStatus(AdStatus.ARCHIVED);
         ad.setActive(false);
         ad.setUpdatedAt(LocalDateTime.now());
     }
 
     public void restore(Long adId, Long userId) {
-        Ad ad = adRepository.findById(adId)
-                .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
-
+        Ad ad = adRepository.findById(adId).orElseThrow(() -> new EntityNotFoundException("Ad not found"));
         ensureOwner(ad, userId);
-
-        if (ad.getStatus() == AdStatus.ACTIVE) {
-            return;
-        }
-
+        if (ad.getStatus() == AdStatus.ACTIVE) return;
         ad.setStatus(AdStatus.ACTIVE);
         ad.setActive(true);
         ad.setUpdatedAt(LocalDateTime.now());
+    }
+
+    static void validateImmutableIds(Ad ad, Long brandId, Long modelId, Long generationId) {
+        if (brandId != null && !Objects.equals(brandId, ad.getBrand().getId())) {
+            throw new IllegalArgumentException("brandId cannot be changed");
+        }
+        if (modelId != null && !Objects.equals(modelId, ad.getModel().getId())) {
+            throw new IllegalArgumentException("modelId cannot be changed");
+        }
+        if (generationId != null && !Objects.equals(generationId, ad.getGeneration().getId())) {
+            throw new IllegalArgumentException("generationId cannot be changed");
+        }
     }
 
     private void validateRelations(Brand brand, Model model, Generation generation, Engine engine) {
@@ -255,47 +243,40 @@ public class AdService {
 
     static String extractS3Key(String photoUrl) {
         String url = photoUrl == null ? "" : photoUrl.trim();
-        if (url.isBlank()) {
-            throw new IllegalArgumentException("Photo URL is invalid: empty value");
-        }
+        if (url.isBlank()) throw new IllegalArgumentException("Photo URL is invalid: empty value");
 
         int queryIndex = url.indexOf('?');
-        if (queryIndex >= 0) {
-            url = url.substring(0, queryIndex);
-        }
+        if (queryIndex >= 0) url = url.substring(0, queryIndex);
         int fragmentIndex = url.indexOf('#');
-        if (fragmentIndex >= 0) {
-            url = url.substring(0, fragmentIndex);
-        }
+        if (fragmentIndex >= 0) url = url.substring(0, fragmentIndex);
 
         int slashIndex = url.lastIndexOf('/');
         String key = slashIndex >= 0 ? url.substring(slashIndex + 1) : url;
-        if (key.isBlank()) {
-            throw new IllegalArgumentException("Photo URL is invalid: cannot extract s3_key");
-        }
+        if (key.isBlank()) throw new IllegalArgumentException("Photo URL is invalid: cannot extract s3_key");
         return key;
     }
 
     static List<String> sanitizePhotoUrls(List<String> photoUrls) {
-        if (photoUrls == null) {
-            return List.of();
+        if (photoUrls == null) return List.of();
+        if (photoUrls.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("photoUrls contains null values");
         }
+
         List<String> sanitized = new ArrayList<>(new LinkedHashSet<>(photoUrls.stream()
-                .map(url -> url == null ? "" : url.trim())
-                .filter(url -> !url.isBlank())
+                .map(String::trim)
                 .toList()));
 
+        if (sanitized.stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException("photoUrls contains blank values");
+        }
         if (sanitized.size() > MAX_PHOTOS_PER_AD) {
             throw new IllegalArgumentException("Ad can contain up to 10 photos");
         }
-
         return sanitized;
     }
 
     static int resolveMainIndex(int photosSize, Integer mainIndex) {
-        if (photosSize == 0) {
-            return -1;
-        }
+        if (photosSize == 0) return -1;
         int resolved = mainIndex == null ? 0 : mainIndex;
         if (resolved < 0 || resolved >= photosSize) {
             throw new IllegalArgumentException("mainIndex is out of range");
@@ -325,11 +306,7 @@ public class AdService {
             String url = photoUrls.get(i);
             AdPhoto photo = existingByUrl.get(url);
             if (photo == null) {
-                photo = AdPhoto.builder()
-                        .ad(ad)
-                        .publicUrl(url)
-                        .s3Key(extractS3Key(url))
-                        .build();
+                photo = AdPhoto.builder().ad(ad).publicUrl(url).s3Key(extractS3Key(url)).build();
             }
             if (photo.getS3Key() == null || photo.getS3Key().isBlank()) {
                 photo.setS3Key(extractS3Key(url));
@@ -343,18 +320,18 @@ public class AdService {
     }
 
     private void ensureOwner(Ad ad, Long userId) {
-        if (!ad.getUser().getId().equals(userId)) {
-            throw new AccessDeniedException("Not your ad");
-        }
+        if (!ad.getUser().getId().equals(userId)) throw new AccessDeniedException("Not your ad");
     }
 
-    private AdResponse map(Ad ad) {
-        List<String> photoUrls = ad.getPhotos().stream()
-                .sorted(Comparator.comparing(AdPhoto::getSortOrder))
-                .map(AdPhoto::getPublicUrl)
-                .filter(url -> url != null && !url.isBlank())
+    private List<AdPhoto> getOrderedPhotos(Ad ad) {
+        return ad.getPhotos().stream()
+                .sorted(Comparator.comparing(AdPhoto::getSortOrder, Comparator.nullsLast(Integer::compareTo)))
+                .filter(photo -> photo.getPublicUrl() != null && !photo.getPublicUrl().isBlank())
                 .toList();
+    }
 
+    private AdResponse mapSummary(Ad ad) {
+        List<String> photoUrls = getOrderedPhotos(ad).stream().map(AdPhoto::getPublicUrl).toList();
         return new AdResponse(
                 ad.getId(),
                 ad.getBrand().getName(),
@@ -375,6 +352,33 @@ public class AdService {
                 ad.getCreatedAt(),
                 ad.getUser().getId(),
                 photoUrls
+        );
+    }
+
+    private AdDetailsResponse mapDetails(Ad ad) {
+        List<String> photoUrls = getOrderedPhotos(ad).stream().map(AdPhoto::getPublicUrl).toList();
+        User seller = ad.getUser();
+        return new AdDetailsResponse(
+                ad.getId(),
+                ad.getStatus(),
+                ad.getCreatedAt(),
+                ad.getUpdatedAt(),
+                ad.getBrand().getName(),
+                ad.getModel().getName(),
+                ad.getGeneration().getName(),
+                ad.getEngine().getName(),
+                ad.getTransmission().getName(),
+                ad.getDriveType().getName(),
+                ad.getYear(),
+                ad.getMileage(),
+                ad.getColor(),
+                ad.getVin(),
+                ad.getPrice(),
+                ad.getCurrency(),
+                ad.getDescription(),
+                ad.getCity().getName(),
+                photoUrls,
+                new AdDetailsResponse.SellerResponse(seller.getId(), seller.getUsername(), seller.getTelegramId())
         );
     }
 }

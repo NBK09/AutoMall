@@ -2,6 +2,9 @@ package com.auto.mall.ad.service;
 
 import com.auto.mall.ad.entity.Ad;
 import com.auto.mall.ad.entity.AdPhoto;
+import com.auto.mall.vehicle.brand.entity.Brand;
+import com.auto.mall.vehicle.generation.entity.Generation;
+import com.auto.mall.vehicle.model.entity.Model;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -13,22 +16,33 @@ class AdServiceTest {
 
     @Test
     void extractS3Key_shouldReturnFileNameFromUrlPath() {
-        String key = AdService.extractS3Key("/uploads/3d44-photo.jpg");
-
-        assertEquals("3d44-photo.jpg", key);
+        assertEquals("3d44-photo.jpg", AdService.extractS3Key("/uploads/3d44-photo.jpg"));
     }
 
     @Test
     void extractS3Key_shouldStripQueryStringAndFragment() {
-        String key = AdService.extractS3Key("https://cdn.example.com/a/b/car.png?x=1#section");
-
-        assertEquals("car.png", key);
+        assertEquals("car.png", AdService.extractS3Key("https://cdn.example.com/a/b/car.png?x=1#section"));
     }
 
     @Test
     void extractS3Key_shouldFailForBlankOrInvalidTail() {
         assertThrows(IllegalArgumentException.class, () -> AdService.extractS3Key("   "));
         assertThrows(IllegalArgumentException.class, () -> AdService.extractS3Key("https://cdn.example.com/path/"));
+    }
+
+    @Test
+    void validateImmutableIds_shouldFailWhenBrandModelGenerationChanged() {
+        Ad ad = new Ad();
+        Brand brand = new Brand(); brand.setId(1L);
+        Model model = new Model(); model.setId(2L);
+        Generation generation = new Generation(); generation.setId(3L);
+        ad.setBrand(brand);
+        ad.setModel(model);
+        ad.setGeneration(generation);
+
+        assertThrows(IllegalArgumentException.class, () -> AdService.validateImmutableIds(ad, 9L, 2L, 3L));
+        assertThrows(IllegalArgumentException.class, () -> AdService.validateImmutableIds(ad, 1L, 9L, 3L));
+        assertThrows(IllegalArgumentException.class, () -> AdService.validateImmutableIds(ad, 1L, 2L, 9L));
     }
 
     @Test

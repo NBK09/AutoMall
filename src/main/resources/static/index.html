@@ -272,6 +272,16 @@
         <div id="myAdsList" class="list"></div>
     </section>
 
+
+
+    <!-- AD DETAILS -->
+    <section id="screenAd" style="display:none">
+        <div class="card">
+            <div class="btns"><button class="btn btn-ghost" onclick="backFromAd()">← Назад</button></div>
+            <div id="adDetailsBlock" class="small">Загрузка...</div>
+        </div>
+    </section>
+
     <!-- EDIT -->
     <section id="screenEdit" style="display:none">
         <div class="card">
@@ -340,6 +350,8 @@
     let editingAdId = null;
     let editPhotoUrls = [];
     let editMainIndex = 0;
+    let selectedAdId = null;
+    let previousScreen = "main";
     const MAX_AD_PHOTOS = 10;
     const COMPRESS_MAX_SIDE = 1600;
     const COMPRESS_QUALITY = 0.78;
@@ -598,15 +610,17 @@
 
       const actions = [];
       if (mode === "MY_ACTIVE"){
-        actions.push(`<button class="btn btn-ghost" onclick="openEditAd(${ad.id})">Редактировать</button>`);
-        actions.push(`<button class="btn btn-danger" onclick="archiveAd(${ad.id})">Архивировать</button>`);
+        actions.push(`<button class="btn btn-ghost" onclick="event.stopPropagation();openAdDetails(${ad.id})">Посмотреть</button>`);
+        actions.push(`<button class="btn btn-ghost" onclick="event.stopPropagation();openEditAd(${ad.id})">Редактировать</button>`);
+        actions.push(`<button class="btn btn-danger" onclick="event.stopPropagation();archiveAd(${ad.id})">Архивировать</button>`);
       }
       if (mode === "MY_ARCHIVED"){
-        actions.push(`<button class="btn btn-ok" onclick="restoreAd(${ad.id})">Восстановить</button>`);
+        actions.push(`<button class="btn btn-ghost" onclick="event.stopPropagation();openAdDetails(${ad.id})">Посмотреть</button>`);
+        actions.push(`<button class="btn btn-ok" onclick="event.stopPropagation();restoreAd(${ad.id})">Восстановить</button>`);
       }
 
       return `
-        <div class="ad">
+        <div class="ad" onclick="openAdDetails(${ad.id})">
           <div class="thumb">${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}</div>
           <div>
             <h4>${escapeHtml(title)}</h4>
@@ -676,6 +690,20 @@
       if (!p.brandId) missing.push("brandId");
       if (!p.modelId) missing.push("modelId");
       if (!p.generationId) missing.push("generationId");
+      if (!p.engineId) missing.push("engineId");
+      if (!p.transmissionId) missing.push("transmissionId");
+      if (!p.driveTypeId) missing.push("driveTypeId");
+      if (!p.cityId) missing.push("cityId");
+      if (!p.year) missing.push("year");
+      if (!p.mileage && p.mileage !== 0) missing.push("mileage");
+      if (!p.color) missing.push("color");
+      if (!p.price && p.price !== 0) missing.push("price");
+      if (!p.description || p.description.trim().length < 10) missing.push("description(min10)");
+      return missing;
+    }
+
+    function validateUpdatePayload(p){
+      const missing = [];
       if (!p.engineId) missing.push("engineId");
       if (!p.transmissionId) missing.push("transmissionId");
       if (!p.driveTypeId) missing.push("driveTypeId");
@@ -766,6 +794,61 @@
     }
 
 
+    function telegramLink(seller){
+      if (!seller) return null;
+      if (seller.telegramUsername) return `https://t.me/${seller.telegramUsername}`;
+      if (seller.telegramUserId) return `tg://user?id=${seller.telegramUserId}`;
+      return null;
+    }
+
+    function backFromAd(){
+      switchScreen(previousScreen || "main");
+    }
+
+    async function openAdDetails(id){
+      selectedAdId = id;
+      previousScreen = document.getElementById("screenMy").style.display === "block" ? "my" : "main";
+      switchScreen("ad");
+      await loadAdDetails(id);
+    }
+
+    async function loadAdDetails(id){
+      const block = document.getElementById("adDetailsBlock");
+      block.textContent = "Загрузка...";
+      const res = await api(`/api/ads/${id}`);
+      if (!res.ok){
+        block.textContent = `Ошибка загрузки: ${res.status}`;
+        return;
+      }
+      const ad = await res.json();
+      const photos = Array.isArray(ad.photoUrls) ? ad.photoUrls : [];
+      const tgLink = telegramLink(ad.seller);
+      block.innerHTML = `
+        <h3 style="margin:0 0 10px">${escapeHtml(ad.brand)} ${escapeHtml(ad.model)} ${escapeHtml(ad.year || "")}</h3>
+        <div class="gallery-grid">${photos.map(u => `<div class="gallery-item"><img src="${escapeHtml(u)}" alt="photo"/></div>`).join("")}</div>
+        <div class="meta" style="margin-top:10px">
+          <div><b>${escapeHtml(ad.price || "")} ${escapeHtml(ad.currency || "")}</b></div>
+          <div>${escapeHtml(ad.generation || "")} · ${escapeHtml(ad.engine || "")}</div>
+          <div>${escapeHtml(ad.transmission || "")} · ${escapeHtml(ad.driveType || "")}</div>
+          <div>${escapeHtml(ad.city || "")} · ${escapeHtml(ad.mileage || "")} км</div>
+          <div>${escapeHtml(ad.description || "")}</div>
+          ${ad.vin ? `<div>VIN: ${escapeHtml(ad.vin)}</div>` : ""}
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="btn ${tgLink ? '' : 'btn-ghost'}" ${tgLink ? '' : 'disabled'} onclick="${tgLink ? `openSellerChat('${tgLink}')` : ''}">${tgLink ? 'Написать продавцу в Telegram' : 'Контакты продавца не заполнены'}</button>
+        </div>
+      `;
+    }
+
+    function openSellerChat(link){
+      const tg = window.Telegram?.WebApp;
+      if (tg?.openTelegramLink && link.startsWith('https://t.me/')) {
+        tg.openTelegramLink(link);
+        return;
+      }
+      window.open(link, '_blank');
+    }
+
     async function loadEditReference(){
       const b = await api("/api/reference/brands");
       setOptions("eBrand", b.ok ? await b.json() : [], "Марка");
@@ -849,7 +932,7 @@
     async function openEditAd(adId){
       if (!token) return toast("Нет авторизации", false);
       editingAdId = adId;
-      const res = await api(`/api/ads/${adId}`);
+      const res = await api(`/api/ads/${adId}/edit`);
       if (!res.ok){
         toast("Не удалось загрузить объявление: " + res.status, false);
         return;
@@ -864,6 +947,7 @@
       document.getElementById("eGeneration").value = ad.generationId || "";
       await loadEditEngines(ad.generationId);
       document.getElementById("eEngine").value = ad.engineId || "";
+      ["eBrand","eModel","eGeneration"].forEach(id => document.getElementById(id).disabled = true);
 
       document.getElementById("eTransmission").value = ad.transmissionId || "";
       document.getElementById("eDriveType").value = ad.driveTypeId || "";
@@ -884,9 +968,6 @@
     async function saveEditAd(){
       if (!editingAdId) return;
       const payload = {
-        brandId: num(document.getElementById("eBrand").value),
-        modelId: num(document.getElementById("eModel").value),
-        generationId: num(document.getElementById("eGeneration").value),
         engineId: num(document.getElementById("eEngine").value),
         transmissionId: num(document.getElementById("eTransmission").value),
         driveTypeId: num(document.getElementById("eDriveType").value),
@@ -901,7 +982,7 @@
         mainIndex: editPhotoUrls.length ? editMainIndex : null
       };
 
-      const missing = validateCreatePayload(payload);
+      const missing = validateUpdatePayload(payload);
       if (missing.length){
         toast("Заполни обязательные поля", false);
         return;
@@ -912,7 +993,9 @@
         body: JSON.stringify(payload)
       });
       if (!res.ok){
-        toast("Ошибка обновления: " + res.status, false);
+        let msg = "Ошибка обновления: " + res.status;
+        try { const t = await res.text(); if (t) msg += " | " + t; } catch(e){}
+        toast(msg, false);
         return;
       }
       toast("Объявление обновлено ✅", true);
@@ -949,7 +1032,7 @@
 
     // ====== UI NAV ======
     function switchScreen(name){
-      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy", edit:"screenEdit" };
+      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy", ad:"screenAd", edit:"screenEdit" };
       Object.values(screens).forEach(id => document.getElementById(id).style.display = "none");
       document.getElementById(screens[name]).style.display = "block";
 
