@@ -271,6 +271,51 @@
 
         <div id="myAdsList" class="list"></div>
     </section>
+
+    <!-- EDIT -->
+    <section id="screenEdit" style="display:none">
+        <div class="card">
+            <div class="title">Редактировать объявление</div>
+            <div class="sub">Редактирование доступно только для активных объявлений.</div>
+
+            <div class="row">
+                <div><label>Марка</label><select id="eBrand"></select></div>
+                <div><label>Модель</label><select id="eModel" disabled></select></div>
+                <div><label>Поколение</label><select id="eGeneration" disabled></select></div>
+                <div><label>Двигатель</label><select id="eEngine" disabled></select></div>
+                <div><label>Коробка</label><select id="eTransmission"></select></div>
+                <div><label>Привод</label><select id="eDriveType"></select></div>
+                <div><label>Город</label><select id="eCity"></select></div>
+                <div><label>Год</label><input id="eYear" type="number"/></div>
+                <div><label>Пробег</label><input id="eMileage" type="number"/></div>
+                <div><label>Цвет</label><input id="eColor" type="text"/></div>
+                <div><label>VIN</label><input id="eVin" type="text"/></div>
+                <div><label>Цена</label><input id="ePrice" type="number"/></div>
+            </div>
+
+            <div style="margin-top:10px">
+                <label>Описание</label>
+                <textarea id="eDescription"></textarea>
+            </div>
+
+            <div style="margin-top:10px">
+                <label>Фото объявления</label>
+                <div class="gallery-actions">
+                    <button type="button" class="btn btn-ghost" onclick="openEditPhotoPicker()">➕ Добавить фото</button>
+                    <span class="hint">Можно удалять, менять порядок и главную фото</span>
+                </div>
+                <input id="editPhotoFiles" type="file" accept="image/*" multiple style="display:none"/>
+                <div id="editPhotoPreview" class="gallery-grid"></div>
+            </div>
+
+            <div class="btns">
+                <button class="btn" onclick="saveEditAd()">Сохранить</button>
+                <button class="btn btn-ghost" onclick="cancelEditAd()">Отмена</button>
+            </div>
+            <div class="divider"></div>
+            <div class="small" id="editDebug"></div>
+        </div>
+    </section>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -292,6 +337,9 @@
     let token = localStorage.getItem("token") || null;
     let myStatus = "ACTIVE"; // ACTIVE | ARCHIVED
     let selectedPhotoFiles = [];
+    let editingAdId = null;
+    let editPhotoUrls = [];
+    let editMainIndex = 0;
     const MAX_AD_PHOTOS = 10;
     const COMPRESS_MAX_SIDE = 1600;
     const COMPRESS_QUALITY = 0.78;
@@ -403,14 +451,14 @@
       renderPhotoPreview();
     }
 
-    async function uploadSelectedPhotos(){
-      if (!selectedPhotoFiles.length) return [];
-      if (selectedPhotoFiles.length > MAX_AD_PHOTOS) {
+    async function uploadPhotoFiles(files){
+      if (!files.length) return [];
+      if (files.length > MAX_AD_PHOTOS) {
         throw new Error("Можно добавить максимум 10 фото");
       }
 
       const formData = new FormData();
-      selectedPhotoFiles.forEach(file => formData.append("files", file));
+      files.forEach(file => formData.append("files", file));
 
       const headers = {};
       if (token) headers["Authorization"] = "Bearer " + token;
@@ -427,6 +475,10 @@
 
       const data = await res.json();
       return Array.isArray(data.photoUrls) ? data.photoUrls : [];
+    }
+
+    async function uploadSelectedPhotos(){
+      return uploadPhotoFiles(selectedPhotoFiles);
     }
 
     // ====== TELEGRAM AUTH ======
@@ -546,6 +598,7 @@
 
       const actions = [];
       if (mode === "MY_ACTIVE"){
+        actions.push(`<button class="btn btn-ghost" onclick="openEditAd(${ad.id})">Редактировать</button>`);
         actions.push(`<button class="btn btn-danger" onclick="archiveAd(${ad.id})">Архивировать</button>`);
       }
       if (mode === "MY_ARCHIVED"){
@@ -712,6 +765,169 @@
       setOptions("engine", [], "— пусто —");
     }
 
+
+    async function loadEditReference(){
+      const b = await api("/api/reference/brands");
+      setOptions("eBrand", b.ok ? await b.json() : [], "Марка");
+
+      const t = await api("/api/reference/transmissions");
+      setOptions("eTransmission", t.ok ? await t.json() : [], "Коробка");
+
+      const d = await api("/api/reference/drive-types");
+      setOptions("eDriveType", d.ok ? await d.json() : [], "Привод");
+
+      const c = await api("/api/reference/cities");
+      setOptions("eCity", c.ok ? await c.json() : [], "Город");
+
+      setOptions("eModel", [], "— пусто —");
+      setOptions("eGeneration", [], "— пусто —");
+      setOptions("eEngine", [], "— пусто —");
+    }
+
+    async function loadEditModels(brandId){
+      if (!brandId) return setOptions("eModel", [], "— пусто —");
+      const res = await api(`/api/reference/brands/${brandId}/models`);
+      setOptions("eModel", res.ok ? await res.json() : [], "Модель");
+      setOptions("eGeneration", [], "— пусто —");
+      setOptions("eEngine", [], "— пусто —");
+    }
+
+    async function loadEditGenerations(modelId){
+      if (!modelId) return setOptions("eGeneration", [], "— пусто —");
+      const res = await api(`/api/reference/models/${modelId}/generations`);
+      setOptions("eGeneration", res.ok ? await res.json() : [], "Поколение");
+      setOptions("eEngine", [], "— пусто —");
+    }
+
+    async function loadEditEngines(generationId){
+      if (!generationId) return setOptions("eEngine", [], "— пусто —");
+      const res = await api(`/api/reference/generations/${generationId}/engines`);
+      setOptions("eEngine", res.ok ? await res.json() : [], "Двигатель");
+    }
+
+    function renderEditPhotoPreview(){
+      const box = document.getElementById("editPhotoPreview");
+      box.innerHTML = editPhotoUrls.map((url, i) => `
+        <div class="gallery-item">
+          <img src="${escapeHtml(url)}" alt="edit-photo-${i}"/>
+          <div style="position:absolute;left:4px;top:4px;display:flex;gap:4px;">
+            <button type="button" class="gallery-remove" style="position:static;width:22px;height:22px" onclick="moveEditPhoto(${i}, -1)">↑</button>
+            <button type="button" class="gallery-remove" style="position:static;width:22px;height:22px" onclick="moveEditPhoto(${i}, 1)">↓</button>
+          </div>
+          <button type="button" class="gallery-remove" style="right:30px" onclick="setEditMain(${i})">★</button>
+          <button type="button" class="gallery-remove" onclick="removeEditPhoto(${i})">×</button>
+          ${i === editMainIndex ? '<div style="position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:10px;font-size:11px">main</div>' : ''}
+        </div>
+      `).join("");
+    }
+
+    function removeEditPhoto(index){
+      editPhotoUrls.splice(index,1);
+      if (editMainIndex >= editPhotoUrls.length) editMainIndex = Math.max(0, editPhotoUrls.length - 1);
+      renderEditPhotoPreview();
+    }
+
+    function moveEditPhoto(index, delta){
+      const ni = index + delta;
+      if (ni < 0 || ni >= editPhotoUrls.length) return;
+      const [item] = editPhotoUrls.splice(index, 1);
+      editPhotoUrls.splice(ni, 0, item);
+      if (editMainIndex === index) editMainIndex = ni;
+      else if (editMainIndex === ni) editMainIndex = index;
+      renderEditPhotoPreview();
+    }
+
+    function setEditMain(index){
+      editMainIndex = index;
+      renderEditPhotoPreview();
+    }
+
+    function openEditPhotoPicker(){
+      document.getElementById("editPhotoFiles").click();
+    }
+
+    async function openEditAd(adId){
+      if (!token) return toast("Нет авторизации", false);
+      editingAdId = adId;
+      const res = await api(`/api/ads/${adId}`);
+      if (!res.ok){
+        toast("Не удалось загрузить объявление: " + res.status, false);
+        return;
+      }
+      const ad = await res.json();
+
+      await loadEditReference();
+      document.getElementById("eBrand").value = ad.brandId || "";
+      await loadEditModels(ad.brandId);
+      document.getElementById("eModel").value = ad.modelId || "";
+      await loadEditGenerations(ad.modelId);
+      document.getElementById("eGeneration").value = ad.generationId || "";
+      await loadEditEngines(ad.generationId);
+      document.getElementById("eEngine").value = ad.engineId || "";
+
+      document.getElementById("eTransmission").value = ad.transmissionId || "";
+      document.getElementById("eDriveType").value = ad.driveTypeId || "";
+      document.getElementById("eCity").value = ad.cityId || "";
+      document.getElementById("eYear").value = ad.year ?? "";
+      document.getElementById("eMileage").value = ad.mileage ?? "";
+      document.getElementById("eColor").value = ad.color ?? "";
+      document.getElementById("eVin").value = ad.vin ?? "";
+      document.getElementById("ePrice").value = ad.price ?? "";
+      document.getElementById("eDescription").value = ad.description ?? "";
+
+      editPhotoUrls = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
+      editMainIndex = ad.mainIndex == null ? 0 : ad.mainIndex;
+      renderEditPhotoPreview();
+      switchScreen("edit");
+    }
+
+    async function saveEditAd(){
+      if (!editingAdId) return;
+      const payload = {
+        brandId: num(document.getElementById("eBrand").value),
+        modelId: num(document.getElementById("eModel").value),
+        generationId: num(document.getElementById("eGeneration").value),
+        engineId: num(document.getElementById("eEngine").value),
+        transmissionId: num(document.getElementById("eTransmission").value),
+        driveTypeId: num(document.getElementById("eDriveType").value),
+        cityId: num(document.getElementById("eCity").value),
+        year: num(document.getElementById("eYear").value),
+        mileage: num(document.getElementById("eMileage").value),
+        color: (document.getElementById("eColor").value || "").trim(),
+        vin: (document.getElementById("eVin").value || "").trim() || null,
+        price: num(document.getElementById("ePrice").value),
+        description: (document.getElementById("eDescription").value || "").trim(),
+        photoUrls: editPhotoUrls,
+        mainIndex: editPhotoUrls.length ? editMainIndex : null
+      };
+
+      const missing = validateCreatePayload(payload);
+      if (missing.length){
+        toast("Заполни обязательные поля", false);
+        return;
+      }
+
+      const res = await api(`/api/ads/${editingAdId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok){
+        toast("Ошибка обновления: " + res.status, false);
+        return;
+      }
+      toast("Объявление обновлено ✅", true);
+      await loadMyAds();
+      await loadAllAds();
+      switchScreen("my");
+    }
+
+    function cancelEditAd(){
+      editingAdId = null;
+      editPhotoUrls = [];
+      editMainIndex = 0;
+      switchScreen("my");
+    }
+
     // ====== ARCHIVE/RESTORE ======
     async function archiveAd(id){
       if (!token) return toast("Нет авторизации", false);
@@ -733,7 +949,7 @@
 
     // ====== UI NAV ======
     function switchScreen(name){
-      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy" };
+      const screens = { main:"screenMain", create:"screenCreate", my:"screenMy", edit:"screenEdit" };
       Object.values(screens).forEach(id => document.getElementById(id).style.display = "none");
       document.getElementById(screens[name]).style.display = "block";
 
@@ -775,6 +991,28 @@
     document.getElementById("brand").addEventListener("change", e => loadModels(e.target.value));
     document.getElementById("model").addEventListener("change", e => loadGenerations(e.target.value));
     document.getElementById("generation").addEventListener("change", e => loadEngines(e.target.value));
+    document.getElementById("eBrand").addEventListener("change", e => loadEditModels(e.target.value));
+    document.getElementById("eModel").addEventListener("change", e => loadEditGenerations(e.target.value));
+    document.getElementById("eGeneration").addEventListener("change", e => loadEditEngines(e.target.value));
+    document.getElementById("editPhotoFiles").addEventListener("change", async e => {
+      const picked = Array.from(e.target.files || []).filter(f => /^image\//.test(f.type));
+      const freeSlots = Math.max(0, MAX_AD_PHOTOS - editPhotoUrls.length);
+      const limited = picked.slice(0, freeSlots);
+      if (picked.length > limited.length) {
+        toast("Можно добавить максимум 10 фото", false);
+      }
+      try {
+        const compressed = await compressSelectedPhotos(limited);
+        const uploaded = await uploadPhotoFiles(compressed);
+        editPhotoUrls = editPhotoUrls.concat(uploaded);
+        if (editPhotoUrls.length === 1) editMainIndex = 0;
+        renderEditPhotoPreview();
+      } catch (err) {
+        toast(err.message || "Не удалось добавить фото", false);
+      } finally {
+        e.target.value = "";
+      }
+    });
 
     // ====== BOOT ======
     (async function init(){
