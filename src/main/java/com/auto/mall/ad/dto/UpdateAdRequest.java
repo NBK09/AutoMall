@@ -5,8 +5,7 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.util.List;
 
-public record CreateAdRequest(
-
+public record UpdateAdRequest(
         @NotNull Long brandId,
         @NotNull Long modelId,
         @NotNull Long generationId,
@@ -20,12 +19,12 @@ public record CreateAdRequest(
         @NotNull @Min(0) Integer mileage,
 
         @NotBlank String color,
-
         String vin,
 
         @NotNull @Positive BigDecimal price,
-
         @NotBlank @Size(min = 5, max = 5000) String description,
 
-        List<String> photoUrls
-) {}
+        List<String> photoUrls,
+        Integer mainIndex
+) {
+}

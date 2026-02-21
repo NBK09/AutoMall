@@ -1,8 +1,10 @@
 package com.auto.mall.ad.controllers;
 
 import com.auto.mall.ad.Enum.AdStatus;
+import com.auto.mall.ad.dto.AdEditResponse;
 import com.auto.mall.ad.dto.AdResponse;
 import com.auto.mall.ad.dto.CreateAdRequest;
+import com.auto.mall.ad.dto.UpdateAdRequest;
 import com.auto.mall.ad.service.AdService;
 import com.auto.mall.security.CustomUserPrincipal;
 import jakarta.validation.Valid;
@@ -31,6 +33,23 @@ public class AdController {
     @GetMapping
     public List<AdResponse> getAllActive() {
         return adService.getAllActiveAds();
+    }
+
+    @GetMapping("/{id}")
+    public AdEditResponse getForEdit(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getForEdit(id, user.getUserId());
+    }
+
+    @PutMapping("/{id}")
+    public AdResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAdRequest request,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.updateAd(id, user.getUserId(), request);
     }
 
     @GetMapping("/my")
