@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Auto Mall</title>
+
+    <!-- Telegram WebApp -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div id="app" class="app">
+
+    <header class="topbar">
+        <div class="brand">
+            <div class="logo">🚗</div>
+            <div class="brand-text">
+                <div class="brand-title">Auto Mall</div>
+                <div class="brand-subtitle" id="subtitle">мини-приложение</div>
+            </div>
+        </div>
+
+        <div class="topbar-actions">
+            <button class="icon-btn" id="btnRefresh" title="Обновить">⟳</button>
+            <button class="icon-btn" id="btnSettings" title="Настройки">⚙</button>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab active" data-tab="feed">Лента</button>
+        <button class="tab" data-tab="my">Мои</button>
+        <button class="tab primary" data-tab="create">Подать</button>
+    </nav>
+
+    <main class="content">
+
+        <!-- FEED -->
+        <section id="tab-feed" class="pane active">
+            <div class="toolbar">
+                <div class="field">
+                    <label>Поиск</label>
+                    <input id="q" placeholder="BMW, Camry, Алматы..." />
+                </div>
+
+                <div class="field">
+                    <label>Сортировка</label>
+                    <select id="sort">
+                        <option value="new">Сначала новые</option>
+                        <option value="price_asc">Цена ↑</option>
+                        <option value="price_desc">Цена ↓</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="feedList" class="cards"></div>
+            <div id="feedEmpty" class="empty hidden">
+                Пока нет объявлений
+            </div>
+        </section>
+
+        <!-- MY -->
+        <section id="tab-my" class="pane">
+            <div class="segmented">
+                <button class="seg active" data-seg="active">Активные</button>
+                <button class="seg" data-seg="archived">Архив</button>
+            </div>
+
+            <div id="myList" class="cards"></div>
+            <div id="myEmpty" class="empty hidden">
+                Здесь пока пусто
+            </div>
+        </section>
+
+        <!-- CREATE / EDIT -->
+        <section id="tab-create" class="pane">
+            <div class="form-card">
+                <div class="form-head">
+                    <div>
+                        <div class="h1" id="formTitle">Подача объявления</div>
+                        <div class="hint">Заполни поля и добавь фото (до 10). Фото грузятся напрямую в S3 через presigned multipart.</div>
+                    </div>
+                    <button class="ghost" id="btnResetForm">Сброс</button>
+                </div>
+
+                <div class="grid2">
+                    <div class="field">
+                        <label>Марка</label>
+                        <select id="brand"></select>
+                    </div>
+                    <div class="field">
+                        <label>Модель</label>
+                        <select id="model"></select>
+                    </div>
+
+                    <div class="field">
+                        <label>Город</label>
+                        <select id="city"></select>
+                    </div>
+                    <div class="field">
+                        <label>Год</label>
+                        <input id="year" type="number" placeholder="2020" min="1950" max="2100" />
+                    </div>
+
+                    <div class="field">
+                        <label>Цена (KZT)</label>
+                        <input id="price" type="number" placeholder="7600000" min="0" />
+                    </div>
+                    <div class="field">
+                        <label>Пробег (км)</label>
+                        <input id="mileage" type="number" placeholder="55555" min="0" />
+                    </div>
+
+                    <div class="field">
+                        <label>Трансмиссия</label>
+                        <select id="transmission"></select>
+                    </div>
+                    <div class="field">
+                        <label>Привод</label>
+                        <select id="driveType"></select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Описание</label>
+                    <textarea id="description" rows="4" placeholder="Состояние, комплектация, торг..."></textarea>
+                </div>
+
+                <div class="photos">
+                    <div class="photos-head">
+                        <div>
+                            <div class="h2">Фотографии</div>
+                            <div class="hint"><span id="photoCount">0</span>/10</div>
+                        </div>
+                        <div class="row">
+                            <input id="filePicker" type="file" accept="image/*" multiple />
+                            <button class="btn" id="btnAddPhotos">Добавить</button>
+                            <button class="ghost" id="btnClearPhotos">Очистить</button>
+                        </div>
+                    </div>
+
+                    <div id="photoGrid" class="photo-grid"></div>
+
+                    <div class="progress hidden" id="uploadProgress">
+                        <div class="bar" id="uploadBar"></div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn primary" id="btnPublish">Опубликовать</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="modal hidden">
+    <div class="modal-card">
+        <div class="modal-head">
+            <div class="h1">Настройки</div>
+            <button class="icon-btn" id="btnCloseSettings">✕</button>
+        </div>
+
+        <div class="hint">
+            В Telegram WebApp авторизация идёт автоматически через initData. В браузере можно вставить JWT вручную.
+        </div>
+
+        <div class="grid2">
+            <div class="field">
+                <label>API base URL</label>
+                <input id="apiBase" placeholder="http://localhost:8080" />
+            </div>
+            <div class="field">
+                <label>JWT (без 'Bearer ')</label>
+                <input id="jwtToken" placeholder="вставь токен" />
+            </div>
+        </div>
+
+        <div class="row end">
+            <button class="ghost" id="btnResetSettings">Сброс</button>
+            <button class="btn" id="btnSaveSettings">Сохранить</button>
+        </div>
+    </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

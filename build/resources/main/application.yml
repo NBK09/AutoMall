@@ -1,0 +1,45 @@
+server:
+  port: 8081
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/auto_mall
+    username: postgres
+    password: auto123
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}
+
+app:
+  s3:
+    endpoint: ${S3_ENDPOINT}
+    region: ${S3_REGION}
+    bucket: ${S3_BUCKET}
+    access-key: ${S3_ACCESS_KEY}
+    secret-key: ${S3_SECRET_KEY}
+    public-base-url: ${S3_PUBLIC_BASE_URL}
+    photos-prefix: ${S3_PHOTOS_PREFIX:ads}
+    presign-expires-seconds: ${S3_PRESIGN_EXPIRES_SECONDS:900}
