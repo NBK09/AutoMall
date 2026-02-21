@@ -5,6 +5,7 @@ import com.auto.mall.ad.Enum.AdStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record AdResponse(
         Long id,
@@ -32,5 +33,6 @@ public record AdResponse(
         AdStatus status,
         LocalDateTime createdAt,
 
-        Long userId // чтобы фронт мог понять "моё/не моё"
+        Long userId, // чтобы фронт мог понять "моё/не моё"
+        List<String> photoUrls
 ) { }
