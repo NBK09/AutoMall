@@ -161,6 +161,10 @@ public class AdService {
         if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(ad.getGeneration().getId())) {
             throw new IllegalArgumentException("Engine does not belong to ad generation");
         }
+        if (generationId != null && !Objects.equals(generationId, ad.getGeneration().getId())) {
+            throw new IllegalArgumentException("generationId cannot be changed");
+        }
+    }
 
         Transmission transmission = transmissionRepository.findById(request.transmissionId())
                 .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
@@ -185,6 +189,13 @@ public class AdService {
         if (request.photoUrls() != null) {
             syncPhotos(ad, request.photoUrls(), request.mainIndex());
         }
+        if (!generation.getModel().getId().equals(model.getId())) {
+            throw new IllegalArgumentException("Generation does not belong to model");
+        }
+        if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(generation.getId())) {
+            throw new IllegalArgumentException("Engine does not belong to generation");
+        }
+    }
 
         return mapDetails(adRepository.save(ad), userId);
     }
