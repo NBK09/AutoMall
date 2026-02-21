@@ -161,8 +161,29 @@ public class AdService {
         if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(ad.getGeneration().getId())) {
             throw new IllegalArgumentException("Engine does not belong to ad generation");
         }
-        if (generationId != null && !Objects.equals(generationId, ad.getGeneration().getId())) {
-            throw new IllegalArgumentException("generationId cannot be changed");
+
+        Transmission transmission = transmissionRepository.findById(request.transmissionId())
+                .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
+        DriveType driveType = driveTypeRepository.findById(request.driveTypeId())
+                .orElseThrow(() -> new EntityNotFoundException("Drive type not found"));
+        City city = cityRepository.findById(request.cityId())
+                .orElseThrow(() -> new EntityNotFoundException("City not found"));
+
+        ad.setEngine(engine);
+        ad.setTransmission(transmission);
+        ad.setDriveType(driveType);
+        ad.setCity(city);
+
+        ad.setYear(request.year());
+        ad.setMileage(request.mileage());
+        ad.setColor(request.color());
+        ad.setVin(request.vin());
+        ad.setPrice(request.price());
+        ad.setCurrency(city.getRegion().getCountry().getCurrencyCode());
+        ad.setDescription(request.description());
+
+        if (request.photoUrls() != null) {
+            syncPhotos(ad, request.photoUrls(), request.mainIndex());
         }
     }
 
@@ -195,6 +216,15 @@ public class AdService {
         if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(generation.getId())) {
             throw new IllegalArgumentException("Engine does not belong to generation");
         }
+    }
+
+        return mapDetails(adRepository.save(ad), userId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdResponse> getAllActiveAds(Long currentUserId) {
+        return adRepository.findByStatusOrderByCreatedAtDesc(AdStatus.ACTIVE)
+                .stream().map(ad -> mapSummary(ad, currentUserId)).toList();
     }
 
         return mapDetails(adRepository.save(ad), userId);

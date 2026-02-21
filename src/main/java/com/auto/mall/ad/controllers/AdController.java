@@ -59,28 +59,6 @@ public class AdController {
         return adService.updateAd(id, user.getUserId(), request);
     }
 
-    @GetMapping("/{id}")
-    public AdDetailsResponse getDetails(@PathVariable Long id) {
-        return adService.getDetails(id);
-    }
-
-    @GetMapping("/{id}/edit")
-    public AdEditResponse getForEdit(
-            @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserPrincipal user
-    ) {
-        return adService.getForEdit(id, user.getUserId());
-    }
-
-    @PutMapping("/{id}")
-    public AdDetailsResponse update(
-            @PathVariable Long id,
-            @Valid @RequestBody UpdateAdRequest request,
-            @AuthenticationPrincipal CustomUserPrincipal user
-    ) {
-        return adService.updateAd(id, user.getUserId(), request);
-    }
-
     @GetMapping("/my")
     public List<AdResponse> getMy(
             @RequestParam(required = false) AdStatus status,
