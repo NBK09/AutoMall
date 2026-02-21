@@ -110,8 +110,9 @@
           width:110px;height:86px;border-radius:14px;border:1px solid var(--stroke);
           background:linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
           display:flex;align-items:center;justify-content:center;color:var(--muted);
-          font-weight:900;
+          font-weight:900;overflow:hidden;
         }
+        .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
         .ad h4{margin:0;font-size:16px}
         .meta{margin-top:4px;color:var(--muted);font-size:13px;line-height:1.3}
         .meta b{color:rgba(255,255,255,.85)}
@@ -134,6 +135,11 @@
         }
         .small{font-size:12px;color:var(--muted)}
         .hint{font-size:12px;color:rgba(255,255,255,.65);margin-top:6px}
+        .gallery-actions{display:flex;align-items:center;gap:10px;margin-top:10px}
+        .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:10px}
+        .gallery-item{position:relative;border:1px solid var(--stroke);border-radius:12px;overflow:hidden;height:88px;background:rgba(5,10,18,.45)}
+        .gallery-item img{width:100%;height:100%;object-fit:cover;display:block}
+        .gallery-remove{position:absolute;top:4px;right:4px;border:0;background:rgba(0,0,0,.65);color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer}
         .divider{height:1px;background:var(--stroke);margin:12px 0}
     </style>
 </head>
@@ -226,6 +232,17 @@
                 <textarea id="description" placeholder="Опиши авто (минимум 10 символов)"></textarea>
             </div>
 
+
+            <div style="margin-top:10px">
+                <label>Фото объявления</label>
+                <div class="gallery-actions">
+                    <button type="button" class="btn btn-ghost" onclick="openPhotoPicker()">➕ Добавить фото</button>
+                    <span class="hint">Можно выбрать из галереи или с рабочего стола</span>
+                </div>
+                <input id="photoFiles" type="file" accept="image/*" multiple style="display:none"/>
+                <div id="photoPreview" class="gallery-grid"></div>
+            </div>
+
             <div class="btns">
                 <button class="btn" onclick="createAd()">Опубликовать</button>
                 <button class="btn btn-ghost" onclick="clearForm()">Очистить</button>
@@ -274,6 +291,7 @@
     // ====== STATE ======
     let token = localStorage.getItem("token") || null;
     let myStatus = "ACTIVE"; // ACTIVE | ARCHIVED
+    let selectedPhotoFiles = [];
 
     // ====== HELPERS ======
     function toast(msg, ok=true){
@@ -311,6 +329,48 @@
     }
 
     function num(v){ return v === "" || v === null || v === undefined ? null : Number(v); }
+
+    function openPhotoPicker(){
+      document.getElementById("photoFiles").click();
+    }
+
+    function renderPhotoPreview(){
+      const box = document.getElementById("photoPreview");
+      box.innerHTML = selectedPhotoFiles.map((file, i) => `
+        <div class="gallery-item">
+          <img src="${URL.createObjectURL(file)}" alt="photo-${i}"/>
+          <button type="button" class="gallery-remove" onclick="removeSelectedPhoto(${i})">×</button>
+        </div>
+      `).join("");
+    }
+
+    function removeSelectedPhoto(index){
+      selectedPhotoFiles.splice(index, 1);
+      renderPhotoPreview();
+    }
+
+    async function uploadSelectedPhotos(){
+      if (!selectedPhotoFiles.length) return [];
+
+      const formData = new FormData();
+      selectedPhotoFiles.forEach(file => formData.append("files", file));
+
+      const headers = {};
+      if (token) headers["Authorization"] = "Bearer " + token;
+
+      const res = await fetch(API_BASE + "/api/ad-photos/upload", {
+        method: "POST",
+        headers,
+        body: formData
+      });
+
+      if (!res.ok){
+        throw new Error("Не удалось загрузить фото: " + res.status);
+      }
+
+      const data = await res.json();
+      return Array.isArray(data.photoUrls) ? data.photoUrls : [];
+    }
 
     // ====== TELEGRAM AUTH ======
     async function telegramAutoAuth(){
@@ -419,6 +479,8 @@
     function adCard(ad, mode){
       // mode: "ALL" | "MY_ACTIVE" | "MY_ARCHIVED"
       const title = `${ad.brand ?? "?"} ${ad.model ?? "?"} ${ad.year ?? ""}`.trim();
+      const photos = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
+      const thumbUrl = photos.length ? photos[0] : null;
       const meta1 = `${ad.generation ?? ""} · ${ad.engine ?? ""} · ${ad.transmission ?? ""} · ${ad.driveType ?? ""}`.replace(/\s·\s·/g," · ").trim();
       const meta2 = `${ad.city ?? ""}`.trim();
       const price = ad.price != null ? `${ad.price} ${ad.currency ?? ""}` : "";
@@ -435,7 +497,7 @@
 
       return `
         <div class="ad">
-          <div class="thumb">AUTO</div>
+          <div class="thumb">${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}</div>
           <div>
             <h4>${escapeHtml(title)}</h4>
             <div class="meta">
@@ -539,8 +601,16 @@
         vin: (document.getElementById("vin").value || "").trim() || null,
         price: num(document.getElementById("price").value),
         currency: "KZT",
-        description: (document.getElementById("description").value || "").trim()
+        description: (document.getElementById("description").value || "").trim(),
+        photoUrls: []
       };
+
+      try {
+        payload.photoUrls = await uploadSelectedPhotos();
+      } catch (e) {
+        toast(e.message || "Ошибка загрузки фото", false);
+        return;
+      }
 
       const missing = validateCreatePayload(payload);
       if (missing.length){
@@ -576,6 +646,8 @@
 
     function clearForm(){
       ["year","mileage","color","vin","price","description"].forEach(id => document.getElementById(id).value = "");
+      selectedPhotoFiles = [];
+      renderPhotoPreview();
       document.getElementById("createDebug").textContent = "";
       // оставим выбранную марку, но сбросим каскад
       setOptions("model", [], "— пусто —");
@@ -626,6 +698,12 @@
     }
 
     // ====== EVENTS ======
+    document.getElementById("photoFiles").addEventListener("change", e => {
+      const next = Array.from(e.target.files || []).filter(f => /^image\//.test(f.type));
+      selectedPhotoFiles = selectedPhotoFiles.concat(next);
+      e.target.value = "";
+      renderPhotoPreview();
+    });
     document.getElementById("brand").addEventListener("change", e => loadModels(e.target.value));
     document.getElementById("model").addEventListener("change", e => loadGenerations(e.target.value));
     document.getElementById("generation").addEventListener("change", e => loadEngines(e.target.value));
