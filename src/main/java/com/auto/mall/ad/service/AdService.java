@@ -4,6 +4,7 @@ import com.auto.mall.ad.Enum.AdStatus;
 import com.auto.mall.ad.dto.AdResponse;
 import com.auto.mall.ad.dto.CreateAdRequest;
 import com.auto.mall.ad.entity.Ad;
+import com.auto.mall.ad.entity.AdPhoto;
 import com.auto.mall.ad.repository.AdRepository;
 import com.auto.mall.geo.entity.City;
 import com.auto.mall.geo.repository.CityRepository;
@@ -73,7 +74,6 @@ public class AdService {
         City city = cityRepository.findById(request.cityId())
                 .orElseThrow(() -> new EntityNotFoundException("City not found"));
 
-        // защита от несовместимых связок
         if (!model.getBrand().getId().equals(brand.getId())) {
             throw new IllegalArgumentException("Model does not belong to brand");
         }
@@ -93,7 +93,6 @@ public class AdService {
                 .driveType(driveType)
                 .city(city)
                 .user(user)
-
                 .year(request.year())
                 .mileage(request.mileage())
                 .color(request.color())
@@ -101,25 +100,26 @@ public class AdService {
                 .price(request.price())
                 .currency(city.getRegion().getCountry().getCurrencyCode())
                 .description(request.description())
-
-                // Истина = статус
                 .status(AdStatus.ACTIVE)
-                // синхронизация для старых запросов
                 .active(true)
                 .build();
 
-        // если у тебя createdAt/updatedAt не проставляются автоматически, можно раскомментить:
-        // ad.setCreatedAt(LocalDateTime.now());
-        // ad.setUpdatedAt(LocalDateTime.now());
+        List<String> photoUrls = sanitizePhotoUrls(request.photoUrls());
+        for (int i = 0; i < photoUrls.size(); i++) {
+            ad.getPhotos().add(AdPhoto.builder()
+                    .ad(ad)
+                    .s3Key(photoUrls.get(i))
+                    .publicUrl(photoUrls.get(i))
+                    .sortOrder(i)
+                    .isMain(i == 0)
+                    .build());
+        }
 
         return map(adRepository.save(ad));
     }
 
-    // ========== LISTS ==========
-
     @Transactional(readOnly = true)
     public List<AdResponse> getAllActiveAds() {
-        // ВАЖНО: не active=true, а статус ACTIVE
         return adRepository.findByStatusOrderByCreatedAtDesc(AdStatus.ACTIVE)
                 .stream().map(this::map).toList();
     }
@@ -133,8 +133,6 @@ public class AdService {
                 .toList();
     }
 
-    // ========== ACTIONS ==========
-
     public void archive(Long adId, Long userId) {
         Ad ad = adRepository.findById(adId)
                 .orElseThrow(() -> new EntityNotFoundException("Ad not found"));
@@ -144,11 +142,11 @@ public class AdService {
         }
 
         if (ad.getStatus() == AdStatus.ARCHIVED) {
-            return; // уже в архиве
+            return;
         }
 
         ad.setStatus(AdStatus.ARCHIVED);
-        ad.setActive(false); // синхронизируем
+        ad.setActive(false);
         ad.setUpdatedAt(LocalDateTime.now());
     }
 
@@ -161,15 +159,31 @@ public class AdService {
         }
 
         if (ad.getStatus() == AdStatus.ACTIVE) {
-            return; // уже активное
+            return;
         }
 
         ad.setStatus(AdStatus.ACTIVE);
-        ad.setActive(true); // синхронизируем
+        ad.setActive(true);
         ad.setUpdatedAt(LocalDateTime.now());
     }
 
+    private List<String> sanitizePhotoUrls(List<String> photoUrls) {
+        if (photoUrls == null) {
+            return List.of();
+        }
+        return photoUrls.stream()
+                .map(url -> url == null ? "" : url.trim())
+                .filter(url -> !url.isBlank())
+                .distinct()
+                .toList();
+    }
+
     private AdResponse map(Ad ad) {
+        List<String> photoUrls = ad.getPhotos().stream()
+                .map(AdPhoto::getPublicUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .toList();
+
         return new AdResponse(
                 ad.getId(),
                 ad.getBrand().getName(),
@@ -188,7 +202,8 @@ public class AdService {
                 ad.getDescription(),
                 ad.getStatus(),
                 ad.getCreatedAt(),
-                ad.getUser().getId()
+                ad.getUser().getId(),
+                photoUrls
         );
     }
 }

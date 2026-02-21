@@ -3,6 +3,7 @@ package com.auto.mall.ad.dto;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record CreateAdRequest(
 
@@ -24,5 +25,7 @@ public record CreateAdRequest(
 
         @NotNull @Positive BigDecimal price,
 
-        @NotBlank @Size(min = 5, max = 5000) String description
+        @NotBlank @Size(min = 5, max = 5000) String description,
+
+        List<String> photoUrls
 ) {}
