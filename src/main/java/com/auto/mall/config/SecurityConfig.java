@@ -36,7 +36,9 @@ public class SecurityConfig {
                                 "/", "/index.html", "/assets/**", "/favicon.ico",
                                 "/api/auth/**",
                                 "/api/reference/**",
-                                "/api/ads"
+                                "/api/ads",
+                                "/api/ad-photos/upload",
+                                "/uploads/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
