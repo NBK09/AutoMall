@@ -37,7 +37,3 @@ s3:
     access-key: ${SELECTEL_S3_ACCESS_KEY:}
     secret-key: ${SELECTEL_S3_SECRET_KEY:}
     cdn-base-url: ${SELECTEL_S3_CDN_BASE_URL:https://cdn.example.com}
-
-
-app:
-  upload-dir: ${APP_UPLOAD_DIR:uploads}

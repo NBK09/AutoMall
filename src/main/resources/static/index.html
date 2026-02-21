@@ -234,13 +234,9 @@
 
 
             <div style="margin-top:10px">
-                <label>Фото объявления</label>
-                <div class="gallery-actions">
-                    <button type="button" class="btn btn-ghost" onclick="openPhotoPicker()">➕ Добавить фото</button>
-                    <span class="hint">Можно выбрать из галереи или с рабочего стола</span>
-                </div>
-                <input id="photoFiles" type="file" accept="image/*" multiple style="display:none"/>
-                <div id="photoPreview" class="gallery-grid"></div>
+                <label>Фото (URL, по одному на строку)</label>
+                <textarea id="photoUrls" placeholder="https://cdn.example.com/ad/1.jpg&#10;https://cdn.example.com/ad/2.jpg"></textarea>
+                <div class="hint">Первое фото станет главным. Поддерживаются http/https ссылки.</div>
             </div>
 
             <div class="btns">
@@ -330,47 +326,13 @@
 
     function num(v){ return v === "" || v === null || v === undefined ? null : Number(v); }
 
-    function openPhotoPicker(){
-      document.getElementById("photoFiles").click();
+    function parsePhotoUrls(text){
+      return String(text || "")
+        .split(/\n|,/)
+        .map(v => v.trim())
+        .filter(v => v && /^https?:\/\//i.test(v));
     }
 
-    function renderPhotoPreview(){
-      const box = document.getElementById("photoPreview");
-      box.innerHTML = selectedPhotoFiles.map((file, i) => `
-        <div class="gallery-item">
-          <img src="${URL.createObjectURL(file)}" alt="photo-${i}"/>
-          <button type="button" class="gallery-remove" onclick="removeSelectedPhoto(${i})">×</button>
-        </div>
-      `).join("");
-    }
-
-    function removeSelectedPhoto(index){
-      selectedPhotoFiles.splice(index, 1);
-      renderPhotoPreview();
-    }
-
-    async function uploadSelectedPhotos(){
-      if (!selectedPhotoFiles.length) return [];
-
-      const formData = new FormData();
-      selectedPhotoFiles.forEach(file => formData.append("files", file));
-
-      const headers = {};
-      if (token) headers["Authorization"] = "Bearer " + token;
-
-      const res = await fetch(API_BASE + "/api/ad-photos/upload", {
-        method: "POST",
-        headers,
-        body: formData
-      });
-
-      if (!res.ok){
-        throw new Error("Не удалось загрузить фото: " + res.status);
-      }
-
-      const data = await res.json();
-      return Array.isArray(data.photoUrls) ? data.photoUrls : [];
-    }
 
     // ====== TELEGRAM AUTH ======
     async function telegramAutoAuth(){
@@ -602,7 +564,7 @@
         price: num(document.getElementById("price").value),
         currency: "KZT",
         description: (document.getElementById("description").value || "").trim(),
-        photoUrls: []
+        photoUrls: parsePhotoUrls(document.getElementById("photoUrls").value)
       };
 
       try {
@@ -645,9 +607,7 @@
     }
 
     function clearForm(){
-      ["year","mileage","color","vin","price","description"].forEach(id => document.getElementById(id).value = "");
-      selectedPhotoFiles = [];
-      renderPhotoPreview();
+      ["year","mileage","color","vin","price","description","photoUrls"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("createDebug").textContent = "";
       // оставим выбранную марку, но сбросим каскад
       setOptions("model", [], "— пусто —");
