@@ -154,17 +154,16 @@ public class AdService {
             throw new IllegalArgumentException("Archived ads cannot be edited. Restore first.");
         }
 
+        // запрет менять brand/model/generation
         validateImmutableIds(ad, request.brandId(), request.modelId(), request.generationId());
 
+        // engine можно менять, но он должен принадлежать той же generation что у объявления
         Engine engine = engineRepository.findById(request.engineId())
                 .orElseThrow(() -> new EntityNotFoundException("Engine not found"));
-        if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(ad.getGeneration().getId())) {
+        if (engine.getGeneration() == null
+                || !Objects.equals(engine.getGeneration().getId(), ad.getGeneration().getId())) {
             throw new IllegalArgumentException("Engine does not belong to ad generation");
         }
-        if (generationId != null && !Objects.equals(generationId, ad.getGeneration().getId())) {
-            throw new IllegalArgumentException("generationId cannot be changed");
-        }
-    }
 
         Transmission transmission = transmissionRepository.findById(request.transmissionId())
                 .orElseThrow(() -> new EntityNotFoundException("Transmission not found"));
@@ -185,17 +184,11 @@ public class AdService {
         ad.setPrice(request.price());
         ad.setCurrency(city.getRegion().getCountry().getCurrencyCode());
         ad.setDescription(request.description());
+        ad.setUpdatedAt(LocalDateTime.now());
 
         if (request.photoUrls() != null) {
             syncPhotos(ad, request.photoUrls(), request.mainIndex());
         }
-        if (!generation.getModel().getId().equals(model.getId())) {
-            throw new IllegalArgumentException("Generation does not belong to model");
-        }
-        if (engine.getGeneration() == null || !engine.getGeneration().getId().equals(generation.getId())) {
-            throw new IllegalArgumentException("Engine does not belong to generation");
-        }
-    }
 
         return mapDetails(adRepository.save(ad), userId);
     }
