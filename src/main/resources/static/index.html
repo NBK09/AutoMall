@@ -234,9 +234,13 @@
 
 
             <div style="margin-top:10px">
-                <label>Фото (URL, по одному на строку)</label>
-                <textarea id="photoUrls" placeholder="https://cdn.example.com/ad/1.jpg&#10;https://cdn.example.com/ad/2.jpg"></textarea>
-                <div class="hint">Первое фото станет главным. Поддерживаются http/https ссылки.</div>
+                <label>Фото объявления</label>
+                <div class="gallery-actions">
+                    <button type="button" class="btn btn-ghost" onclick="openPhotoPicker()">➕ Добавить фото</button>
+                    <span class="hint">Можно выбрать от 0 до 10 фото из галереи или с рабочего стола</span>
+                </div>
+                <input id="photoFiles" type="file" accept="image/*" multiple style="display:none"/>
+                <div id="photoPreview" class="gallery-grid"></div>
             </div>
 
             <div class="btns">
@@ -288,6 +292,9 @@
     let token = localStorage.getItem("token") || null;
     let myStatus = "ACTIVE"; // ACTIVE | ARCHIVED
     let selectedPhotoFiles = [];
+    const MAX_AD_PHOTOS = 10;
+    const COMPRESS_MAX_SIDE = 1600;
+    const COMPRESS_QUALITY = 0.78;
 
     // ====== HELPERS ======
     function toast(msg, ok=true){
@@ -326,13 +333,101 @@
 
     function num(v){ return v === "" || v === null || v === undefined ? null : Number(v); }
 
-    function parsePhotoUrls(text){
-      return String(text || "")
-        .split(/\n|,/)
-        .map(v => v.trim())
-        .filter(v => v && /^https?:\/\//i.test(v));
+    function limitPhotoSelection(files){
+      const freeSlots = Math.max(0, MAX_AD_PHOTOS - selectedPhotoFiles.length);
+      return files.slice(0, freeSlots);
     }
 
+    function hasTooManyPhotos(newItemsCount){
+      return selectedPhotoFiles.length + newItemsCount > MAX_AD_PHOTOS;
+    }
+
+    function loadImageFromFile(file){
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function compressImage(file){
+      if (!/^image\//.test(file.type)) return file;
+
+      const image = await loadImageFromFile(file);
+      const scale = Math.min(1, COMPRESS_MAX_SIDE / Math.max(image.width, image.height));
+      const width = Math.round(image.width * scale);
+      const height = Math.round(image.height * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", COMPRESS_QUALITY));
+      if (!blob) return file;
+
+      const compressedName = (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg";
+      return new File([blob], compressedName, { type: "image/jpeg" });
+    }
+
+    async function compressSelectedPhotos(files){
+      const compressed = [];
+      for (const file of files){
+        compressed.push(await compressImage(file));
+      }
+      return compressed;
+    }
+
+    function openPhotoPicker(){
+      document.getElementById("photoFiles").click();
+    }
+
+    function renderPhotoPreview(){
+      const box = document.getElementById("photoPreview");
+      box.innerHTML = selectedPhotoFiles.map((file, i) => `
+        <div class="gallery-item">
+          <img src="${URL.createObjectURL(file)}" alt="photo-${i}"/>
+          <button type="button" class="gallery-remove" onclick="removeSelectedPhoto(${i})">×</button>
+        </div>
+      `).join("");
+    }
+
+    function removeSelectedPhoto(index){
+      selectedPhotoFiles.splice(index, 1);
+      renderPhotoPreview();
+    }
+
+    async function uploadSelectedPhotos(){
+      if (!selectedPhotoFiles.length) return [];
+      if (selectedPhotoFiles.length > MAX_AD_PHOTOS) {
+        throw new Error("Можно добавить максимум 10 фото");
+      }
+
+      const formData = new FormData();
+      selectedPhotoFiles.forEach(file => formData.append("files", file));
+
+      const headers = {};
+      if (token) headers["Authorization"] = "Bearer " + token;
+
+      const res = await fetch(API_BASE + "/api/ad-photos/upload", {
+        method: "POST",
+        headers,
+        body: formData
+      });
+
+      if (!res.ok){
+        throw new Error("Не удалось загрузить фото: " + res.status);
+      }
+
+      const data = await res.json();
+      return Array.isArray(data.photoUrls) ? data.photoUrls : [];
+    }
 
     // ====== TELEGRAM AUTH ======
     async function telegramAutoAuth(){
@@ -564,7 +659,7 @@
         price: num(document.getElementById("price").value),
         currency: "KZT",
         description: (document.getElementById("description").value || "").trim(),
-        photoUrls: parsePhotoUrls(document.getElementById("photoUrls").value)
+        photoUrls: []
       };
 
       try {
@@ -607,7 +702,9 @@
     }
 
     function clearForm(){
-      ["year","mileage","color","vin","price","description","photoUrls"].forEach(id => document.getElementById(id).value = "");
+      ["year","mileage","color","vin","price","description"].forEach(id => document.getElementById(id).value = "");
+      selectedPhotoFiles = [];
+      renderPhotoPreview();
       document.getElementById("createDebug").textContent = "";
       // оставим выбранную марку, но сбросим каскад
       setOptions("model", [], "— пусто —");
@@ -658,11 +755,22 @@
     }
 
     // ====== EVENTS ======
-    document.getElementById("photoFiles").addEventListener("change", e => {
-      const next = Array.from(e.target.files || []).filter(f => /^image\//.test(f.type));
-      selectedPhotoFiles = selectedPhotoFiles.concat(next);
-      e.target.value = "";
-      renderPhotoPreview();
+    document.getElementById("photoFiles").addEventListener("change", async e => {
+      const picked = Array.from(e.target.files || []).filter(f => /^image\//.test(f.type));
+      if (hasTooManyPhotos(picked.length)) {
+        toast("Можно добавить максимум 10 фото", false);
+      }
+
+      try {
+        const limited = limitPhotoSelection(picked);
+        const compressed = await compressSelectedPhotos(limited);
+        selectedPhotoFiles = selectedPhotoFiles.concat(compressed);
+        renderPhotoPreview();
+      } catch (err) {
+        toast("Не удалось обработать выбранные фото", false);
+      } finally {
+        e.target.value = "";
+      }
     });
     document.getElementById("brand").addEventListener("change", e => loadModels(e.target.value));
     document.getElementById("model").addEventListener("change", e => loadGenerations(e.target.value));

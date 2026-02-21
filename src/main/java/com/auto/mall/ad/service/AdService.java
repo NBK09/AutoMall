@@ -46,6 +46,8 @@ public class AdService {
     private final TransmissionRepository transmissionRepository;
     private final DriveTypeRepository driveTypeRepository;
 
+    private static final int MAX_PHOTOS_PER_AD = 10;
+
     private final CityRepository cityRepository;
 
     public AdResponse createAd(CreateAdRequest request, Long userId) {
@@ -171,11 +173,17 @@ public class AdService {
         if (photoUrls == null) {
             return List.of();
         }
-        return photoUrls.stream()
+        List<String> sanitized = photoUrls.stream()
                 .map(url -> url == null ? "" : url.trim())
                 .filter(url -> !url.isBlank())
                 .distinct()
                 .toList();
+
+        if (sanitized.size() > MAX_PHOTOS_PER_AD) {
+            throw new IllegalArgumentException("Ad can contain up to 10 photos");
+        }
+
+        return sanitized;
     }
 
     private AdResponse map(Ad ad) {

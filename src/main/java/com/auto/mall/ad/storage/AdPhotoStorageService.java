@@ -17,6 +17,8 @@ import java.util.UUID;
 @Service
 public class AdPhotoStorageService {
 
+    private static final int MAX_FILES_PER_REQUEST = 10;
+
     private final Path uploadRoot;
 
     public AdPhotoStorageService(@Value("${app.upload-dir:uploads}") String uploadDir) throws IOException {
@@ -26,6 +28,15 @@ public class AdPhotoStorageService {
 
     public List<String> store(List<MultipartFile> files) throws IOException {
         List<String> result = new ArrayList<>();
+        if (files == null || files.isEmpty()) {
+            return result;
+        }
+
+        long nonEmptyFiles = files.stream().filter(file -> file != null && !file.isEmpty()).count();
+        if (nonEmptyFiles > MAX_FILES_PER_REQUEST) {
+            throw new IllegalArgumentException("You can upload up to 10 photos at a time");
+        }
+
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
                 continue;
