@@ -27,7 +27,7 @@ public class AdPhoto {
     @JoinColumn(name = "ad_id", nullable = false)
     private Ad ad;
 
-    @Column(name = "s3_key", nullable = false, unique = true)
+    @Column(name = "s3_key", nullable = false, unique = true, length = 1024)
     private String s3Key;
 
     @Column(name = "public_url")

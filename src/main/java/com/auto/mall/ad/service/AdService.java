@@ -110,7 +110,7 @@ public class AdService {
         for (int i = 0; i < photoUrls.size(); i++) {
             ad.getPhotos().add(AdPhoto.builder()
                     .ad(ad)
-                    .s3Key(photoUrls.get(i))
+                    .s3Key(extractS3Key(photoUrls.get(i)))
                     .publicUrl(photoUrls.get(i))
                     .sortOrder(i)
                     .isMain(i == 0)
@@ -167,6 +167,30 @@ public class AdService {
         ad.setStatus(AdStatus.ACTIVE);
         ad.setActive(true);
         ad.setUpdatedAt(LocalDateTime.now());
+    }
+
+
+    static String extractS3Key(String photoUrl) {
+        String url = photoUrl == null ? "" : photoUrl.trim();
+        if (url.isBlank()) {
+            throw new IllegalArgumentException("Photo URL is invalid: empty value");
+        }
+
+        int queryIndex = url.indexOf('?');
+        if (queryIndex >= 0) {
+            url = url.substring(0, queryIndex);
+        }
+        int fragmentIndex = url.indexOf('#');
+        if (fragmentIndex >= 0) {
+            url = url.substring(0, fragmentIndex);
+        }
+
+        int slashIndex = url.lastIndexOf('/');
+        String key = slashIndex >= 0 ? url.substring(slashIndex + 1) : url;
+        if (key.isBlank()) {
+            throw new IllegalArgumentException("Photo URL is invalid: cannot extract s3_key");
+        }
+        return key;
     }
 
     private List<String> sanitizePhotoUrls(List<String> photoUrls) {
