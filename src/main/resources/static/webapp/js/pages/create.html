@@ -1,0 +1,20 @@
+<section class="card">
+  <h1 class="section-title">Подать объявление</h1>
+  <form id="createForm" class="grid-2">
+    <div><label>Марка</label><select id="brandId" required></select></div>
+    <div><label>Модель</label><select id="modelId" required disabled></select></div>
+    <div><label>Поколение</label><select id="generationId" required disabled></select></div>
+    <div><label>Двигатель</label><select id="engineId" required disabled></select></div>
+    <div><label>Коробка</label><select id="transmissionId" required></select></div>
+    <div><label>Привод</label><select id="driveTypeId" required></select></div>
+    <div><label>Город</label><select id="cityId" required></select></div>
+    <div><label>Год</label><input id="year" type="number" required /></div>
+    <div><label>Пробег</label><input id="mileage" type="number" required /></div>
+    <div><label>Цвет</label><input id="color" required /></div>
+    <div><label>VIN</label><input id="vin" /></div>
+    <div><label>Цена</label><input id="price" type="number" required /></div>
+  </form>
+  <div style="margin-top:10px"><label>Описание</label><textarea id="description" required></textarea></div>
+  <div style="margin-top:10px"><label>Фото</label><input id="photos" type="file" multiple accept="image/*"/></div>
+  <div class="row-btns" style="margin-top:10px"><button class="btn" id="createSubmit">Опубликовать</button></div>
+</section>

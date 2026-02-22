@@ -1,0 +1,15 @@
+<section class="card">
+  <h1 class="section-title">Редактирование</h1>
+  <form id="editForm" class="grid-2">
+    <div><label>Марка</label><input id="eBrand" disabled /></div>
+    <div><label>Модель</label><input id="eModel" disabled /></div>
+    <div><label>Год</label><input id="eYear" type="number" required /></div>
+    <div><label>Пробег</label><input id="eMileage" type="number" required /></div>
+    <div><label>Цвет</label><input id="eColor" required /></div>
+    <div><label>VIN</label><input id="eVin" /></div>
+    <div><label>Цена</label><input id="ePrice" type="number" required /></div>
+  </form>
+  <div style="margin-top:10px"><label>Описание</label><textarea id="eDescription" required></textarea></div>
+  <div style="margin-top:10px"><label>Фото</label><input id="ePhotos" type="file" multiple accept="image/*"/></div>
+  <div class="row-btns" style="margin-top:10px"><button class="btn" id="editSubmit">Сохранить</button></div>
+</section>

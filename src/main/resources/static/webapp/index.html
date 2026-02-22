@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Auto Mall</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/webapp/assets/app.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">🚗 Auto Mall</div>
+    <button class="icon-btn" id="headerSettingsBtn" title="Настройки">⚙️</button>
+    <div id="authPill" class="pill">Авторизация…</div>
+  </header>
+
+  <main id="appRoot" class="app-root"></main>
+  <nav id="bottomNav" class="bottom-nav"></nav>
+
+  <div id="toast" class="toast"></div>
+  <div id="modalRoot"></div>
+
+  <script type="module" src="/webapp/js/app.js"></script>
+</body>
+</html>
