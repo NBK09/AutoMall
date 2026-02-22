@@ -13,6 +13,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.time.LocalDateTime;
 
 @Entity
@@ -52,6 +54,11 @@ public class Ad {
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     private User user;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "ad", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<AdPhoto> photos = new ArrayList<>();
 
     // ===== fields =====
     @Column(nullable = false)

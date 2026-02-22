@@ -1,8 +1,7 @@
 package com.auto.mall.ad.controllers;
 
 import com.auto.mall.ad.Enum.AdStatus;
-import com.auto.mall.ad.dto.AdResponse;
-import com.auto.mall.ad.dto.CreateAdRequest;
+import com.auto.mall.ad.dto.*;
 import com.auto.mall.ad.service.AdService;
 import com.auto.mall.security.CustomUserPrincipal;
 import jakarta.validation.Valid;
@@ -27,10 +26,36 @@ public class AdController {
     ) {
         return adService.createAd(request, user.getUserId());
     }
-
     @GetMapping
-    public List<AdResponse> getAllActive() {
-        return adService.getAllActiveAds();
+    public List<AdResponse> getAllActive(
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getAllActiveAds(user != null ? user.getUserId() : null);
+    }
+
+    @GetMapping("/{id}")
+    public AdDetailsResponse getDetails(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getDetails(id, user != null ? user.getUserId() : null);
+    }
+
+    @GetMapping("/{id}/edit")
+    public AdEditResponse getForEdit(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.getForEdit(id, user.getUserId());
+    }
+
+    @PutMapping("/{id}")
+    public AdDetailsResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAdRequest request,
+            @AuthenticationPrincipal CustomUserPrincipal user
+    ) {
+        return adService.updateAd(id, user.getUserId(), request);
     }
 
     @GetMapping("/my")
