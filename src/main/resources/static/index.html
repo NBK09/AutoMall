@@ -113,13 +113,6 @@
           font-weight:900;overflow:hidden;
         }
         .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
-        .thumb-carousel{position:relative;touch-action:pan-y;}
-        .thumb-indicator{position:absolute;right:6px;bottom:6px;padding:2px 6px;border-radius:999px;background:rgba(0,0,0,.6);font-size:11px;color:#fff}
-        .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;display:none;}
-        .lightbox-backdrop{position:absolute;inset:0}
-        .lightbox-content{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;}
-        .lightbox-content img{max-width:100%;max-height:100%;user-select:none;transform:translate(0px,0px) scale(1);}
-        .lightbox-indicator{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.6);}
         .ad h4{margin:0;font-size:16px}
         .meta{margin-top:4px;color:var(--muted);font-size:13px;line-height:1.3}
         .meta b{color:rgba(255,255,255,.85)}
@@ -345,14 +338,15 @@
     </section>
 </div>
 
-<div id="lightbox" class="lightbox">
-  <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
-  <button class="btn btn-ghost" style="position:absolute;top:12px;left:12px;z-index:2" onclick="closeLightbox()">✕</button>
-  <button class="btn btn-ghost" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="lightboxPrev()">‹</button>
-  <button class="btn btn-ghost" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="lightboxNext()">›</button>
-  <div id="lightboxIndicator" class="lightbox-indicator">1/1</div>
-  <div id="lightboxContent" class="lightbox-content">
-    <img id="lightboxImg" src="" alt="photo"/>
+<div id="photoOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;">
+  <div style="position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:2;">
+    <button class="btn btn-ghost" onclick="closePhotoOverlay()">✕</button>
+    <div id="photoOverlayCounter" class="pill">1/1</div>
+  </div>
+  <button class="btn btn-ghost" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="overlayPrev()">‹</button>
+  <button class="btn btn-ghost" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2" onclick="overlayNext()">›</button>
+  <div id="photoOverlayStage" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;">
+    <img id="photoOverlayImg" src="" style="max-width:100%;max-height:100%;transform:translate(0px,0px) scale(1);transform-origin:center center;user-select:none;"/>
   </div>
 </div>
 
@@ -384,10 +378,6 @@
     let favoriteIds = new Set();
     let adGallery = [];
     let adActiveIndex = 0;
-    const cardPhotoIndex = new Map();
-    const adPhotosById = new Map();
-    let lbPhotos = [];
-    let lbIndex = 0;
     const MAX_AD_PHOTOS = 10;
     const COMPRESS_MAX_SIDE = 1600;
     const COMPRESS_QUALITY = 0.78;
@@ -635,20 +625,15 @@
 
     // ====== ADS RENDER ======
     function adCard(ad, mode){
-      // mode: "ALL" | "MY_ACTIVE" | "MY_ARCHIVED" | "FAV"
+      // mode: "ALL" | "MY_ACTIVE" | "MY_ARCHIVED"
       const title = `${ad.brand ?? "?"} ${ad.model ?? "?"} ${ad.year ?? ""}`.trim();
       const photos = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
-      adPhotosById.set(ad.id, photos);
-      if (!cardPhotoIndex.has(ad.id)) cardPhotoIndex.set(ad.id, 0);
-      const idx = Math.min(cardPhotoIndex.get(ad.id) || 0, Math.max(0, photos.length - 1));
-      const thumbUrl = photos.length ? photos[idx] : null;
-
+      const thumbUrl = photos.length ? photos[0] : null;
       const meta1 = `${ad.generation ?? ""} · ${ad.engine ?? ""} · ${ad.transmission ?? ""} · ${ad.driveType ?? ""}`.replace(/\s·\s·/g," · ").trim();
       const meta2 = `${ad.city ?? ""}`.trim();
       const price = ad.price != null ? `${ad.price} ${ad.currency ?? ""}` : "";
       const mileage = ad.mileage != null ? `${ad.mileage} км` : "";
       const status = ad.status ? String(ad.status) : "";
-      const isFav = Boolean(ad.isFavorite) || favoriteIds.has(ad.id);
 
       const actions = [];
       if (mode === "MY_ACTIVE"){
@@ -663,12 +648,9 @@
 
       return `
         <div class="ad" onclick="openAdDetails(${ad.id})">
-          <div class="thumb thumb-carousel" data-ad-id="${ad.id}">
-            ${thumbUrl ? `<img class="thumb-img" src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}
-            <div class="thumb-indicator">${photos.length ? `${idx + 1}/${photos.length}` : "0/0"}</div>
-          </div>
+          <div class="thumb">${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(title)}" loading="lazy"/>` : "AUTO"}</div>
           <div>
-            <h4>${escapeHtml(title)} <button class="btn btn-ghost" style="padding:6px 10px" onclick="event.stopPropagation();toggleFavorite(${ad.id}, ${isFav})">${isFav ? "♥" : "♡"}</button></h4>
+            <h4>${escapeHtml(title)} <button class="btn btn-ghost" style="padding:6px 10px" onclick="event.stopPropagation();toggleFavorite(${ad.id}, ${ad.isFavorite ? "true" : "false"})">${ad.isFavorite ? "♥" : "♡"}</button></h4>
             <div class="meta">
               <div><b>${escapeHtml(price)}</b> ${mileage ? " · " + escapeHtml(mileage) : ""}</div>
               <div>${escapeHtml(meta1)}</div>
@@ -705,7 +687,6 @@
         return;
       }
       list.innerHTML = data.map(a => adCard(a, "ALL")).join("");
-      attachThumbSwipeHandlers(list);
     }
 
     async function loadMyAds(){
@@ -728,114 +709,6 @@
       }
       const mode = myStatus === "ARCHIVED" ? "MY_ARCHIVED" : "MY_ACTIVE";
       list.innerHTML = data.map(a => adCard(a, mode)).join("");
-      attachThumbSwipeHandlers(list);
-    }
-
-    function updateThumb(adId){
-      const box = document.querySelector(`.thumb-carousel[data-ad-id="${adId}"]`);
-      if (!box) return;
-      const photos = adPhotosById.get(adId) || [];
-      const idx = Math.min(cardPhotoIndex.get(adId) || 0, Math.max(0, photos.length - 1));
-      cardPhotoIndex.set(adId, idx);
-      const img = box.querySelector('.thumb-img');
-      const indicator = box.querySelector('.thumb-indicator');
-      if (photos.length && img) img.src = photos[idx];
-      if (indicator) indicator.textContent = photos.length ? `${idx + 1}/${photos.length}` : '0/0';
-    }
-
-    function nextThumbPhoto(adId){
-      const photos = adPhotosById.get(adId) || [];
-      if (photos.length <= 1) return;
-      const idx = ((cardPhotoIndex.get(adId) || 0) + 1) % photos.length;
-      cardPhotoIndex.set(adId, idx);
-      updateThumb(adId);
-    }
-
-    function prevThumbPhoto(adId){
-      const photos = adPhotosById.get(adId) || [];
-      if (photos.length <= 1) return;
-      const len = photos.length;
-      const idx = ((cardPhotoIndex.get(adId) || 0) - 1 + len) % len;
-      cardPhotoIndex.set(adId, idx);
-      updateThumb(adId);
-    }
-
-    function attachThumbSwipeHandlers(containerElement){
-      const nodes = containerElement.querySelectorAll('.thumb-carousel');
-      nodes.forEach(node => {
-        const adId = Number(node.dataset.adId);
-        if (!adId || node.dataset.swipeBound === '1') return;
-        node.dataset.swipeBound = '1';
-
-        let startX = 0, startY = 0, dx = 0, isHorizontal = false;
-
-        node.addEventListener('click', e => {
-          e.stopPropagation();
-          const photos = adPhotosById.get(adId) || [];
-          const idx = cardPhotoIndex.get(adId) || 0;
-          openLightbox(photos, idx);
-        });
-
-        node.addEventListener('touchstart', e => {
-          if (!e.touches.length) return;
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-          dx = 0;
-          isHorizontal = false;
-        }, {passive:true});
-
-        node.addEventListener('touchmove', e => {
-          if (!e.touches.length) return;
-          dx = e.touches[0].clientX - startX;
-          const dy = e.touches[0].clientY - startY;
-          if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-            isHorizontal = true;
-            e.preventDefault();
-          }
-        }, {passive:false});
-
-        node.addEventListener('touchend', () => {
-          if (!isHorizontal) return;
-          if (Math.abs(dx) < 40) return;
-          if (dx < 0) nextThumbPhoto(adId);
-          else prevThumbPhoto(adId);
-        });
-      });
-    }
-
-    const lightboxState = { scale: 1, x: 0, y: 0, drag: false, sx: 0, sy: 0, pinch: 0 };
-
-    function renderLightbox(){
-      const img = document.getElementById('lightboxImg');
-      img.src = lbPhotos[lbIndex] || '';
-      document.getElementById('lightboxIndicator').textContent = `${lbPhotos.length ? lbIndex + 1 : 0}/${lbPhotos.length}`;
-      resetLightboxZoom();
-    }
-
-    function openLightbox(photos, startIndex){
-      if (!photos || !photos.length) return;
-      lbPhotos = photos;
-      lbIndex = Math.max(0, Math.min(startIndex || 0, photos.length - 1));
-      document.getElementById('lightbox').style.display = 'block';
-      document.body.style.overflow = 'hidden';
-      renderLightbox();
-    }
-
-    function closeLightbox(){
-      document.getElementById('lightbox').style.display = 'none';
-      document.body.style.overflow = '';
-    }
-
-    function lightboxPrev(){ if(!lbPhotos.length) return; lbIndex = (lbIndex - 1 + lbPhotos.length) % lbPhotos.length; renderLightbox(); }
-    function lightboxNext(){ if(!lbPhotos.length) return; lbIndex = (lbIndex + 1) % lbPhotos.length; renderLightbox(); }
-
-    function applyLightboxTransform(){
-      const img = document.getElementById('lightboxImg');
-      img.style.transform = `translate(${lightboxState.x}px, ${lightboxState.y}px) scale(${lightboxState.scale})`;
-    }
-
-    function resetLightboxZoom(){
-      lightboxState.scale = 1; lightboxState.x = 0; lightboxState.y = 0; applyLightboxTransform();
     }
 
     // ====== CREATE AD ======
@@ -980,28 +853,18 @@
       adGallery = Array.isArray(ad.photoUrls) ? ad.photoUrls.filter(Boolean) : [];
       if (adActiveIndex >= adGallery.length) adActiveIndex = 0;
       const tgLink = telegramLink(ad.seller);
-      const mileageText = ad.mileage ? `${escapeHtml(ad.mileage)} км` : "—";
       block.innerHTML = `
         <h3 style="margin:0 0 10px">${escapeHtml(ad.brand)} ${escapeHtml(ad.model)} ${escapeHtml(ad.year || "")}
           <button class="btn btn-ghost" style="padding:6px 10px" onclick="toggleFavorite(${ad.id}, ${ad.isFavorite ? "true" : "false"})">${ad.isFavorite ? "♥" : "♡"}</button>
         </h3>
         ${buildCarousel(adGallery)}
-        <div class="meta" style="margin-top:10px; display:grid; gap:10px">
+        <div class="meta" style="margin-top:10px">
           <div><b>${escapeHtml(ad.price || "")} ${escapeHtml(ad.currency || "")}</b></div>
-          <div>
-            <div><b>Характеристики:</b></div>
-            <div>Год: ${escapeHtml(ad.year || "—")}</div>
-            <div>Пробег: ${mileageText}</div>
-            <div>Город: ${escapeHtml(ad.city || "—")}</div>
-            <div>Поколение / Двигатель: ${escapeHtml(ad.generation || "—")} / ${escapeHtml(ad.engine || "—")}</div>
-            <div>Коробка / Привод: ${escapeHtml(ad.transmission || "—")} / ${escapeHtml(ad.driveType || "—")}</div>
-            <div>Цвет: ${escapeHtml(ad.color || "—")}</div>
-            ${ad.vin ? `<div>VIN: ${escapeHtml(ad.vin)}</div>` : ""}
-          </div>
-          <div>
-            <div><b>Описание:</b></div>
-            <div>${escapeHtml(ad.description || "")}</div>
-          </div>
+          <div>${escapeHtml(ad.generation || "")} · ${escapeHtml(ad.engine || "")}</div>
+          <div>${escapeHtml(ad.transmission || "")} · ${escapeHtml(ad.driveType || "")}</div>
+          <div>${escapeHtml(ad.city || "")} · ${escapeHtml(ad.mileage || "")} км</div>
+          <div>${escapeHtml(ad.description || "")}</div>
+          ${ad.vin ? `<div>VIN: ${escapeHtml(ad.vin)}</div>` : ""}
         </div>
         <div class="btns" style="margin-top:10px">
           <button class="btn ${tgLink ? '' : 'btn-ghost'}" ${tgLink ? '' : 'disabled'} onclick="${tgLink ? `openSellerChat('${tgLink}')` : ''}">${tgLink ? 'Написать продавцу в Telegram' : 'Контакты продавца не заполнены'}</button>
@@ -1036,8 +899,7 @@
         list.innerHTML = `<div class="card"><div class="sub">Пусто.</div></div>`;
         return;
       }
-      list.innerHTML = data.map(a => adCard(a, "FAV")).join("");
-      attachThumbSwipeHandlers(list);
+      list.innerHTML = data.map(a => adCard(a, "MY_ACTIVE")).join("");
     }
 
     async function toggleFavorite(adId, current){
@@ -1061,7 +923,7 @@
       const main = photos[adActiveIndex] || photos[0];
       return `
         <div style="position:relative">
-          <img src="${escapeHtml(main)}" alt="main" onclick="openLightbox(adGallery, adActiveIndex)" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid var(--stroke);cursor:zoom-in"/>
+          <img src="${escapeHtml(main)}" alt="main" onclick="openPhotoOverlay(${adActiveIndex})" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid var(--stroke);cursor:zoom-in"/>
           <button class="btn btn-ghost" style="position:absolute;left:8px;top:50%;transform:translateY(-50%)" onclick="event.stopPropagation();adPrev()">‹</button>
           <button class="btn btn-ghost" style="position:absolute;right:8px;top:50%;transform:translateY(-50%)" onclick="event.stopPropagation();adNext()">›</button>
         </div>
@@ -1076,6 +938,68 @@
     function adNext(){ if(!adGallery.length) return; adActiveIndex = (adActiveIndex + 1) % adGallery.length; if (selectedAdId) loadAdDetails(selectedAdId); }
 
     const overlayState = {scale:1,x:0,y:0,drag:false,startX:0,startY:0,pinchDistance:0};
+
+    function applyOverlayTransform(){
+      const img = document.getElementById("photoOverlayImg");
+      img.style.transform = `translate(${overlayState.x}px, ${overlayState.y}px) scale(${overlayState.scale})`;
+      document.getElementById("photoOverlayCounter").textContent = `${adActiveIndex+1}/${Math.max(1, adGallery.length)}`;
+    }
+
+    function resetOverlayZoom(){ overlayState.scale = 1; overlayState.x = 0; overlayState.y = 0; applyOverlayTransform(); }
+
+    function openPhotoOverlay(index){
+      if (!adGallery.length) return;
+      adActiveIndex = index;
+      document.getElementById("photoOverlay").style.display = "block";
+      document.body.style.overflow = "hidden";
+      document.getElementById("photoOverlayImg").src = adGallery[adActiveIndex];
+      resetOverlayZoom();
+    }
+
+    function closePhotoOverlay(){
+      document.getElementById("photoOverlay").style.display = "none";
+      document.body.style.overflow = "";
+    }
+    function overlayPrev(){ if(!adGallery.length) return; adActiveIndex=(adActiveIndex-1+adGallery.length)%adGallery.length; document.getElementById("photoOverlayImg").src=adGallery[adActiveIndex]; resetOverlayZoom(); }
+    function overlayNext(){ if(!adGallery.length) return; adActiveIndex=(adActiveIndex+1)%adGallery.length; document.getElementById("photoOverlayImg").src=adGallery[adActiveIndex]; resetOverlayZoom(); }
+
+    function distance(t1,t2){ const dx=t1.clientX-t2.clientX; const dy=t1.clientY-t2.clientY; return Math.hypot(dx,dy); }
+
+    (function bindOverlayGestures(){
+      const stage = document.getElementById("photoOverlayStage");
+      stage.addEventListener("wheel", e => { e.preventDefault(); overlayState.scale = Math.min(4, Math.max(1, overlayState.scale + (e.deltaY < 0 ? 0.15 : -0.15))); applyOverlayTransform(); }, {passive:false});
+      stage.addEventListener("dblclick", e => { e.preventDefault(); overlayState.scale = overlayState.scale > 1 ? 1 : 2; if (overlayState.scale===1){overlayState.x=0;overlayState.y=0;} applyOverlayTransform(); });
+      stage.addEventListener("mousedown", e => { if (overlayState.scale <= 1) return; overlayState.drag = true; overlayState.startX = e.clientX - overlayState.x; overlayState.startY = e.clientY - overlayState.y; });
+      window.addEventListener("mousemove", e => { if (!overlayState.drag) return; overlayState.x = e.clientX - overlayState.startX; overlayState.y = e.clientY - overlayState.startY; applyOverlayTransform(); });
+      window.addEventListener("mouseup", ()=> overlayState.drag = false);
+      stage.addEventListener("touchstart", e => {
+        if (e.touches.length === 2) overlayState.pinchDistance = distance(e.touches[0], e.touches[1]);
+        if (e.touches.length === 1 && overlayState.scale > 1) {
+          overlayState.drag = true;
+          overlayState.startX = e.touches[0].clientX - overlayState.x;
+          overlayState.startY = e.touches[0].clientY - overlayState.y;
+        }
+      }, {passive:false});
+      stage.addEventListener("touchmove", e => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const dist = distance(e.touches[0], e.touches[1]);
+          if (overlayState.pinchDistance > 0) {
+            overlayState.scale = Math.min(4, Math.max(1, overlayState.scale * (dist / overlayState.pinchDistance)));
+            overlayState.pinchDistance = dist;
+            applyOverlayTransform();
+          }
+          return;
+        }
+        if (overlayState.drag && e.touches.length === 1) {
+          e.preventDefault();
+          overlayState.x = e.touches[0].clientX - overlayState.startX;
+          overlayState.y = e.touches[0].clientY - overlayState.startY;
+          applyOverlayTransform();
+        }
+      }, {passive:false});
+      stage.addEventListener("touchend", () => { overlayState.drag = false; overlayState.pinchDistance = 0; });
+    })();
 
     async function loadEditReference(){
       const b = await api("/api/reference/brands");
@@ -1327,69 +1251,7 @@
       }
     });
 
-    window.addEventListener("keydown", e => { if (e.key === "Escape") closeLightbox(); });
-
-    (function bindLightboxGestures(){
-      const stage = document.getElementById('lightboxContent');
-      let startX=0, startY=0, dx=0, isHorizontal=false;
-      stage.addEventListener('wheel', e => { e.preventDefault(); lightboxState.scale = Math.min(4, Math.max(1, lightboxState.scale + (e.deltaY < 0 ? 0.15 : -0.15))); applyLightboxTransform(); }, {passive:false});
-      stage.addEventListener('dblclick', e => { e.preventDefault(); lightboxState.scale = lightboxState.scale > 1 ? 1 : 2; if (lightboxState.scale===1){lightboxState.x=0;lightboxState.y=0;} applyLightboxTransform(); });
-      stage.addEventListener('mousedown', e => { if (lightboxState.scale <= 1) return; lightboxState.drag = true; lightboxState.sx = e.clientX - lightboxState.x; lightboxState.sy = e.clientY - lightboxState.y; });
-      window.addEventListener('mousemove', e => { if (!lightboxState.drag) return; lightboxState.x = e.clientX - lightboxState.sx; lightboxState.y = e.clientY - lightboxState.sy; applyLightboxTransform(); });
-      window.addEventListener('mouseup', ()=> lightboxState.drag = false);
-
-      stage.addEventListener('touchstart', e => {
-        if (e.touches.length === 2) {
-          const a=e.touches[0], b=e.touches[1];
-          lightboxState.pinch = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-          return;
-        }
-        if (e.touches.length === 1) {
-          startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0; isHorizontal = false;
-          if (lightboxState.scale > 1) {
-            lightboxState.drag = true;
-            lightboxState.sx = e.touches[0].clientX - lightboxState.x;
-            lightboxState.sy = e.touches[0].clientY - lightboxState.y;
-          }
-        }
-      }, {passive:false});
-
-      stage.addEventListener('touchmove', e => {
-        if (e.touches.length === 2) {
-          const a=e.touches[0], b=e.touches[1];
-          const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-          if (lightboxState.pinch > 0) {
-            e.preventDefault();
-            lightboxState.scale = Math.min(4, Math.max(1, lightboxState.scale * (dist / lightboxState.pinch)));
-            lightboxState.pinch = dist;
-            applyLightboxTransform();
-          }
-          return;
-        }
-
-        if (lightboxState.drag && e.touches.length === 1 && lightboxState.scale > 1) {
-          e.preventDefault();
-          lightboxState.x = e.touches[0].clientX - lightboxState.sx;
-          lightboxState.y = e.touches[0].clientY - lightboxState.sy;
-          applyLightboxTransform();
-          return;
-        }
-
-        if (e.touches.length === 1) {
-          dx = e.touches[0].clientX - startX;
-          const dy = e.touches[0].clientY - startY;
-          if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) { isHorizontal = true; e.preventDefault(); }
-        }
-      }, {passive:false});
-
-      stage.addEventListener('touchend', () => {
-        if (lightboxState.scale <= 1 && isHorizontal && Math.abs(dx) >= 40) {
-          if (dx < 0) lightboxNext(); else lightboxPrev();
-        }
-        lightboxState.drag = false;
-        lightboxState.pinch = 0;
-      });
-    })();
+    window.addEventListener("keydown", e => { if (e.key === "Escape") closePhotoOverlay(); });
 
     // ====== BOOT ======
     (async function init(){
