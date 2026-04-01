@@ -3,8 +3,8 @@ package com.auto.mall.auth.service;
 import com.auto.mall.auth.DTO.TelegramUser;
 import com.auto.mall.user.entity.User;
 import com.auto.mall.user.service.UserService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
