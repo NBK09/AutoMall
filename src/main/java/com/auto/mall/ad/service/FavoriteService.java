@@ -22,7 +22,7 @@ public class FavoriteService {
     private final FavoriteRepository favoriteRepository;
     private final UserRepository userRepository;
     private final AdRepository adRepository;
-    private final AdService adService;
+    private final rrrrr adService;
 
     public void add(Long userId, Long adId) {
         if (favoriteRepository.existsByUserIdAndAdId(userId, adId)) {
